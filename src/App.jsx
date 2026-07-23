@@ -14,6 +14,21 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 const fmt = (d) => (d ? d.split("-").reverse().join("/") : "");
 const byPos = (a, b) => a.position - b.position;
 
+// chuyển giá trị ô Excel (Date hoặc chuỗi dd/mm/yyyy | yyyy-mm-dd) -> "YYYY-MM-DD"
+function toISO(v) {
+  if (v == null || v === "") return null;
+  if (v instanceof Date && !isNaN(v)) {
+    const y = v.getFullYear(), m = String(v.getMonth() + 1).padStart(2, "0"), d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  return null;
+}
+
 const STATUS = {
   done:    { label: "Đã xong",       icon: "✅", cls: "done" },
   ontrack: { label: "Đúng tiến độ",  icon: "🟢", cls: "ontrack" },
@@ -21,13 +36,12 @@ const STATUS = {
   na:      { label: "Chưa bắt đầu",  icon: "⏳", cls: "na" },
 };
 
-// Đánh giá 1 gói thầu từ danh sách mốc
 function evalPackage(ms, today) {
   const list = [...ms].sort(byPos);
   if (!list.length) return { code: "na", done: 0, total: 0, lateList: [], current: "Chưa bắt đầu" };
   const total = list.length;
   const done = list.filter((m) => m.actualDate).length;
-  const last = list[list.length - 1]; // mốc Hợp đồng
+  const last = list[list.length - 1];
   const lateList = list.filter((m) => m.plannedDate && !m.actualDate && m.plannedDate < today);
   const doneOnes = list.filter((m) => m.actualDate);
   const current = doneOnes.length ? doneOnes[doneOnes.length - 1].name : "Chưa bắt đầu";
@@ -35,6 +49,13 @@ function evalPackage(ms, today) {
   if (last.actualDate) code = "done";
   else if (lateList.length) code = "late";
   return { code, done, total, lateList, current };
+}
+// Ngày ký hợp đồng theo kế hoạch = ngày dự kiến của mốc "Hợp đồng" (hoặc mốc cuối)
+function plannedContractDate(ms) {
+  const list = [...ms].sort(byPos);
+  if (!list.length) return null;
+  const hd = [...list].reverse().find((m) => m.name.toLowerCase().includes("hợp đồng")) || list[list.length - 1];
+  return hd.plannedDate || null;
 }
 const isLateMilestone = (m) => m.actualDate && m.plannedDate && m.actualDate > m.plannedDate;
 
@@ -66,7 +87,6 @@ export default function App() {
   const [sideOpen, setSideOpen] = useState(false);
   const today = todayStr();
 
-  /* load + realtime */
   useEffect(() => {
     if (!isConfigured) { setData({ error: "config" }); return; }
     (async () => {
@@ -115,16 +135,12 @@ export default function App() {
     { id: "templates", ico: "⚙️", label: "Bộ mốc quy trình" },
     { id: "staff", ico: "👥", label: "Cán bộ" },
   ];
-
   const ctx = { data, setData, today, me: currentUser, staff };
 
   return (
     <div className="app">
       <aside className={`side ${sideOpen ? "open" : ""}`}>
-        <div className="brand">
-          <b>TIẾN ĐỘ GÓI THẦU</b>
-          <span>B.QLDAHTVT · VTNet</span>
-        </div>
+        <div className="brand"><b>TIẾN ĐỘ GÓI THẦU</b><span>B.QLDAHTVT · VTNet</span></div>
         <nav className="nav">
           {NAV.map((n) => (
             <button key={n.id} className={tab === n.id ? "on" : ""}
@@ -159,7 +175,7 @@ function ConfigHelp() {
     <div style={{ maxWidth: 620, margin: "60px auto", padding: 24 }}>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>⚙️ Chưa cấu hình Supabase</h2>
-        <p>Mở file <code>src/lib/supabase.js</code> và dán <b>Project URL</b> và <b>anon public key</b> của anh vào 2 dòng đầu, rồi chạy lại. Xem chi tiết trong <b>HUONG-DAN-CAI-DAT.md</b>.</p>
+        <p>Mở file <code>src/lib/supabase.js</code> và dán <b>Project URL</b> và <b>anon public key</b> vào 2 dòng đầu, rồi chạy lại.</p>
       </div>
     </div>
   );
@@ -180,7 +196,7 @@ function Login({ staff, onPick }) {
               {s.isManager ? "👔 " : "👤 "}{s.fullName}{s.code ? ` · ${s.code}` : ""}
             </button>
           ))}
-          {!staff.length && <div className="empty">Chưa có cán bộ. Chạy file SQL mẫu hoặc thêm ở tab Cán bộ.</div>}
+          {!staff.length && <div className="empty">Chưa có cán bộ. Thêm ở tab Cán bộ.</div>}
         </div>
       </div>
     </div>
@@ -195,7 +211,12 @@ function usePkgRows(data, today) {
       const ev = evalPackage(ms, today);
       const staff = data.staff.find((s) => s.id === pk.staffId);
       const tpl = data.workflow_templates.find((t) => t.id === pk.templateId);
-      return { ...pk, ms, ev, staffName: staff ? staff.fullName : "—", tplName: tpl ? tpl.name : "—" };
+      return {
+        ...pk, ms, ev,
+        staffName: staff ? staff.fullName : "—",
+        tplName: tpl ? tpl.name : "—",
+        plannedContract: plannedContractDate(ms),
+      };
     });
   }, [data, today]);
 }
@@ -220,7 +241,6 @@ function Dashboard({ data, today }) {
     { name: "Chưa bắt đầu", value: cnt.na, c: "#94a3b8" },
   ].filter((d) => d.value > 0);
 
-  // Danh sách mốc đang chậm (cảnh báo)
   const warns = [];
   rows.forEach((r) => {
     r.ev.lateList.forEach((m) => {
@@ -230,12 +250,17 @@ function Dashboard({ data, today }) {
   });
   warns.sort((a, b) => b.days - a.days);
 
+  const sorted = [...rows].sort((a, b) => {
+    const order = { late: 0, na: 1, ontrack: 2, done: 3 };
+    return order[a.ev.code] - order[b.ev.code] || a.staffName.localeCompare(b.staffName);
+  });
+
   const exportExcel = () => {
     const summary = rows.map((r, i) => ({
       STT: i + 1, "Cán bộ": r.staffName, "Tên gói thầu": r.name,
       "Loại quy trình": r.tplName, "Tiến độ hiện tại": r.ev.current,
-      "Đánh giá": STATUS[r.ev.code].label,
-      "Đã xong mốc": `${r.ev.done}/${r.ev.total}`,
+      "Ngày ký HĐ (KH)": fmt(r.plannedContract),
+      "Đánh giá": STATUS[r.ev.code].label, "Đã xong mốc": `${r.ev.done}/${r.ev.total}`,
     }));
     const detail = [];
     rows.forEach((r) => [...r.ms].sort(byPos).forEach((m) =>
@@ -245,7 +270,7 @@ function Dashboard({ data, today }) {
         "Ngày thực tế": fmt(m.actualDate), "Ghi chú": m.note || "",
       })));
     const wb = XLSX.utils.book_new();
-    const s1 = XLSX.utils.json_to_sheet(summary); s1["!cols"] = [{ wch: 5 }, { wch: 16 }, { wch: 55 }, { wch: 26 }, { wch: 22 }, { wch: 16 }, { wch: 12 }];
+    const s1 = XLSX.utils.json_to_sheet(summary); s1["!cols"] = [{ wch: 5 }, { wch: 16 }, { wch: 55 }, { wch: 26 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 12 }];
     const s2 = XLSX.utils.json_to_sheet(detail); s2["!cols"] = [{ wch: 16 }, { wch: 45 }, { wch: 5 }, { wch: 34 }, { wch: 22 }, { wch: 13 }, { wch: 13 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, s1, "Tổng hợp");
     XLSX.utils.book_append_sheet(wb, s2, "Chi tiết mốc");
@@ -279,8 +304,7 @@ function Dashboard({ data, today }) {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" fontSize={11} />
                 <YAxis allowDecimals={false} fontSize={11} />
-                <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Tooltip /><Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="done" stackId="a" name="Đã xong" fill="#2563eb" />
                 <Bar dataKey="ontrack" stackId="a" name="Đúng TĐ" fill="#16a34a" />
                 <Bar dataKey="late" stackId="a" name="Chậm" fill="#dc2626" />
@@ -304,6 +328,37 @@ function Dashboard({ data, today }) {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="between" style={{ marginBottom: 10 }}>
+          <b>📋 Danh sách gói thầu</b>
+          <span className="tag">{total} gói</span>
+        </div>
+        <div className="scroll">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>STT</th><th>Cán bộ</th><th>Tên gói thầu</th><th>Tiến độ hiện tại</th>
+                <th>Mốc</th><th>Ngày ký HĐ (KH)</th><th>Đánh giá</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r, i) => (
+                <tr key={r.id}>
+                  <td>{i + 1}</td>
+                  <td>{r.staffName}</td>
+                  <td style={{ maxWidth: 380 }}>{r.name}</td>
+                  <td className="small">{r.ev.current}</td>
+                  <td>{r.ev.done}/{r.ev.total}</td>
+                  <td className="small">{fmt(r.plannedContract) || "—"}</td>
+                  <td><Badge code={r.ev.code} /></td>
+                </tr>
+              ))}
+              {!sorted.length && <tr><td colSpan={7} className="empty">Chưa có gói thầu nào.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="card">
         <div className="between" style={{ marginBottom: 10 }}>
           <b>⚠️ Cảnh báo mốc chậm / vướng mắc</b>
@@ -315,12 +370,8 @@ function Dashboard({ data, today }) {
             <span style={{ fontSize: 18 }}>🔴</span>
             <div style={{ flex: 1 }}>
               <div><b>{w.milestone}</b> <span className="pill-late">Chậm {w.days} ngày</span></div>
-              <div className="small mut" style={{ marginTop: 2 }}>
-                {w.staff} · {w.pkg}
-              </div>
-              <div className="small" style={{ marginTop: 2 }}>
-                Dự kiến ký: {fmt(w.planned)}{w.note ? ` · ${w.note}` : ""}
-              </div>
+              <div className="small mut" style={{ marginTop: 2 }}>{w.staff} · {w.pkg}</div>
+              <div className="small" style={{ marginTop: 2 }}>Dự kiến ký: {fmt(w.planned)}{w.note ? ` · ${w.note}` : ""}</div>
             </div>
           </div>
         ))}
@@ -340,6 +391,7 @@ const StatCard = ({ ico, n, l, color }) => (
 function MyPackages({ data, today, me }) {
   const rows = usePkgRows(data, today).filter((r) => r.staffId === me.id);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [detail, setDetail] = useState(null);
 
   return (
@@ -349,13 +401,17 @@ function MyPackages({ data, today, me }) {
           <h1 className="h1">Gói thầu của tôi</h1>
           <p className="sub">{me.fullName} · {rows.length} gói thầu</p>
         </div>
-        <Btn onClick={() => setAdding(true)}>+ Thêm gói thầu</Btn>
+        <div className="row">
+          <Btn kind="ghost" onClick={() => setImporting(true)}>⬆ Import Excel</Btn>
+          <Btn onClick={() => setAdding(true)}>+ Thêm gói thầu</Btn>
+        </div>
       </div>
-      {!rows.length && <div className="card empty">Chưa có gói thầu nào. Bấm “+ Thêm gói thầu” để bắt đầu.</div>}
+      {!rows.length && <div className="card empty">Chưa có gói thầu nào. Bấm “+ Thêm gói thầu” hoặc “⬆ Import Excel”.</div>}
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))" }}>
         {rows.map((r) => <PkgCard key={r.id} r={r} onOpen={() => setDetail(r.id)} />)}
       </div>
       {adding && <AddPackage data={data} me={me} onClose={() => setAdding(false)} />}
+      {importing && <ImportPackages data={data} me={me} onClose={() => setImporting(false)} />}
       {detail && <PackageDetail data={data} today={today} pkgId={detail} canEdit onClose={() => setDetail(null)} />}
     </>
   );
@@ -370,13 +426,12 @@ function PkgCard({ r, onOpen }) {
       </div>
       <div style={{ fontWeight: 700, margin: "10px 0 4px", lineHeight: 1.4 }}>{r.name}</div>
       <div className="small mut">Đang ở: {r.ev.current}</div>
+      <div className="small mut" style={{ marginTop: 2 }}>Ngày ký HĐ (KH): {fmt(r.plannedContract) || "—"}</div>
       <div style={{ height: 7, background: "#eef1f5", borderRadius: 5, marginTop: 10, overflow: "hidden" }}>
         <div style={{ width: pct + "%", height: "100%", background: r.ev.code === "late" ? "#dc2626" : "#16a34a" }} />
       </div>
       {r.ev.lateList.length > 0 && (
-        <div className="small" style={{ color: "#dc2626", marginTop: 8, fontWeight: 600 }}>
-          ⚠️ {r.ev.lateList.length} mốc đang chậm
-        </div>
+        <div className="small" style={{ color: "#dc2626", marginTop: 8, fontWeight: 600 }}>⚠️ {r.ev.lateList.length} mốc đang chậm</div>
       )}
     </div>
   );
@@ -389,6 +444,7 @@ function AllPackages({ data, today, me }) {
   const [fStatus, setFStatus] = useState("");
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState(null);
+  const [importing, setImporting] = useState(false);
 
   const rows = all.filter((r) =>
     (!fStaff || r.staffId === fStaff) &&
@@ -399,8 +455,13 @@ function AllPackages({ data, today, me }) {
 
   return (
     <>
-      <h1 className="h1">Toàn phòng</h1>
-      <p className="sub">Tiến độ tất cả gói thầu · theo người & theo trạng thái</p>
+      <div className="between">
+        <div>
+          <h1 className="h1">Toàn phòng</h1>
+          <p className="sub">Tiến độ tất cả gói thầu · theo người & theo trạng thái</p>
+        </div>
+        <Btn kind="ghost" onClick={() => setImporting(true)}>⬆ Import Excel</Btn>
+      </div>
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="row">
           <div style={{ flex: "1 1 200px" }}>
@@ -431,7 +492,7 @@ function AllPackages({ data, today, me }) {
           <thead>
             <tr>
               <th>STT</th><th>Cán bộ</th><th>Tên gói thầu</th><th>Tiến độ hiện tại</th>
-              <th>Mốc</th><th>Đánh giá</th><th></th>
+              <th>Mốc</th><th>Ngày ký HĐ (KH)</th><th>Đánh giá</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -439,14 +500,15 @@ function AllPackages({ data, today, me }) {
               <tr key={r.id}>
                 <td>{i + 1}</td>
                 <td>{r.staffName}</td>
-                <td style={{ maxWidth: 380 }}>{r.name}</td>
+                <td style={{ maxWidth: 360 }}>{r.name}</td>
                 <td className="small">{r.ev.current}</td>
                 <td>{r.ev.done}/{r.ev.total}</td>
+                <td className="small">{fmt(r.plannedContract) || "—"}</td>
                 <td><Badge code={r.ev.code} /></td>
                 <td><Btn kind="ghost sm" onClick={() => setDetail(r.id)}>Xem</Btn></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={7} className="empty">Không có gói thầu phù hợp bộ lọc.</td></tr>}
+            {!rows.length && <tr><td colSpan={8} className="empty">Không có gói thầu phù hợp bộ lọc.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -455,6 +517,7 @@ function AllPackages({ data, today, me }) {
           canEdit={me.isManager || all.find((r) => r.id === detail)?.staffId === me.id}
           onClose={() => setDetail(null)} />
       )}
+      {importing && <ImportPackages data={data} me={me} onClose={() => setImporting(false)} />}
     </>
   );
 }
@@ -465,14 +528,11 @@ function PackageDetail({ data, today, pkgId, canEdit, onClose }) {
   const ms = data.package_milestones.filter((m) => m.packageId === pkgId).sort(byPos);
   const staff = data.staff.find((s) => s.id === pkg?.staffId);
   const ev = evalPackage(ms, today);
-  const [saving, setSaving] = useState("");
 
   const save = async (id, field, value) => {
     const col = { docNumber: "doc_number", plannedDate: "planned_date", actualDate: "actual_date", note: "note" }[field];
-    setSaving(id + field);
     try { await updateRow("package_milestones", id, { [col]: value || null }); }
     catch (e) { alert("Lỗi lưu: " + e.message); }
-    setSaving("");
   };
   const delPkg = async () => {
     if (!confirm("Xóa gói thầu này và toàn bộ mốc của nó?")) return;
@@ -484,7 +544,7 @@ function PackageDetail({ data, today, pkgId, canEdit, onClose }) {
       <div className="between" style={{ marginBottom: 4 }}>
         <div>
           <h3 style={{ margin: 0 }}>{pkg?.name}</h3>
-          <div className="small mut">{staff?.fullName} · {ev.done}/{ev.total} mốc</div>
+          <div className="small mut">{staff?.fullName} · {ev.done}/{ev.total} mốc · Ngày ký HĐ (KH): {fmt(plannedContractDate(ms)) || "—"}</div>
         </div>
         <Badge code={ev.code} />
       </div>
@@ -514,23 +574,15 @@ function PackageDetail({ data, today, pkgId, canEdit, onClose }) {
                     {late && <span className="pill-late" style={{ marginLeft: 6 }}>chậm</span>}
                     {slow && <span className="pill-late" style={{ marginLeft: 6 }}>🟠 muộn</span>}
                   </td>
-                  <td>
-                    <input className="cell-in" defaultValue={m.docNumber || ""} disabled={!canEdit}
-                      onBlur={(e) => e.target.value !== (m.docNumber || "") && save(m.id, "docNumber", e.target.value)} />
-                  </td>
-                  <td>
-                    <input type="date" className="cell-in" defaultValue={m.plannedDate || ""} disabled={!canEdit}
-                      onChange={(e) => save(m.id, "plannedDate", e.target.value)} />
-                  </td>
-                  <td>
-                    <input type="date" className="cell-in" defaultValue={m.actualDate || ""} disabled={!canEdit}
-                      style={slow ? { background: "#fdf1e0" } : {}}
-                      onChange={(e) => save(m.id, "actualDate", e.target.value)} />
-                  </td>
-                  <td>
-                    <input className="cell-in" defaultValue={m.note || ""} disabled={!canEdit}
-                      onBlur={(e) => e.target.value !== (m.note || "") && save(m.id, "note", e.target.value)} />
-                  </td>
+                  <td><input className="cell-in" defaultValue={m.docNumber || ""} disabled={!canEdit}
+                    onBlur={(e) => e.target.value !== (m.docNumber || "") && save(m.id, "docNumber", e.target.value)} /></td>
+                  <td><input type="date" className="cell-in" defaultValue={m.plannedDate || ""} disabled={!canEdit}
+                    onChange={(e) => save(m.id, "plannedDate", e.target.value)} /></td>
+                  <td><input type="date" className="cell-in" defaultValue={m.actualDate || ""} disabled={!canEdit}
+                    style={slow ? { background: "#fdf1e0" } : {}}
+                    onChange={(e) => save(m.id, "actualDate", e.target.value)} /></td>
+                  <td><input className="cell-in" defaultValue={m.note || ""} disabled={!canEdit}
+                    onBlur={(e) => e.target.value !== (m.note || "") && save(m.id, "note", e.target.value)} /></td>
                 </tr>
               );
             })}
@@ -556,7 +608,7 @@ function AddPackage({ data, me, onClose }) {
 
   const create = async () => {
     if (!name.trim()) return alert("Nhập tên gói thầu.");
-    if (!tplId) return alert("Chưa có bộ mốc quy trình. Tạo ở tab Bộ mốc quy trình.");
+    if (!tplId) return alert("Chưa có bộ mốc quy trình.");
     setBusy(true);
     try {
       const pid = "pk_" + genId();
@@ -592,6 +644,125 @@ function AddPackage({ data, me, onClose }) {
   );
 }
 
+/* ---------------- Import packages from Excel ---------------- */
+function ImportPackages({ data, me, onClose }) {
+  const tpls = data.workflow_templates;
+  const [tplId, setTplId] = useState(tpls.find((t) => t.isDefault)?.id || tpls[0]?.id || "");
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const tplMs = data.template_milestones.filter((m) => m.templateId === tplId).sort(byPos);
+
+  const downloadTemplate = () => {
+    const example = { "Cán bộ": me.fullName, "Tên gói thầu": "VD: Khảo sát 500 trạm 5G quý 4/2026" };
+    tplMs.forEach((m) => { example[m.name] = ""; });
+    const guide = { "Cán bộ": "(điền họ tên hoặc mã cán bộ)", "Tên gói thầu": "(bắt buộc)" };
+    tplMs.forEach((m) => { guide[m.name] = "ngày dự kiến ký (dd/mm/yyyy)"; });
+    const ws = XLSX.utils.json_to_sheet([guide, example]);
+    ws["!cols"] = Object.keys(example).map((k) => ({ wch: Math.max(k.length + 2, 16) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "GoiThau");
+    XLSX.writeFile(wb, "Mau_Import_GoiThau.xlsx");
+  };
+
+  const onFile = async (file) => {
+    try {
+      const wb = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = (e) => { try { res(XLSX.read(e.target.result, { type: "array", cellDates: true })); } catch (err) { rej(err); } };
+        r.onerror = () => rej(new Error("Không đọc được file"));
+        r.readAsArrayBuffer(file);
+      });
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+      const items = [], errors = [];
+      raw.forEach((row, i) => {
+        const name = String(row["Tên gói thầu"] ?? "").trim();
+        const key = String(row["Cán bộ"] ?? "").trim();
+        if (key.startsWith("(") || name.startsWith("(")) return; // bỏ dòng hướng dẫn
+        if (!name) { errors.push(`Dòng ${i + 2}: thiếu Tên gói thầu — bỏ qua`); return; }
+        const st = data.staff.find((s) =>
+          s.fullName.toLowerCase() === key.toLowerCase() || (s.code || "").toLowerCase() === key.toLowerCase());
+        if (key && !st) errors.push(`Dòng ${i + 2}: không thấy cán bộ "${key}" → gán cho ${me.fullName}`);
+        const dates = {};
+        tplMs.forEach((m) => { const d = toISO(row[m.name]); if (d) dates[m.position] = d; });
+        items.push({ name, staffId: st ? st.id : me.id, staffLabel: st ? st.fullName : me.fullName, nDates: Object.keys(dates).length, dates });
+      });
+      setPreview({ items, errors, total: raw.length });
+    } catch (e) { alert("Lỗi đọc file: " + e.message); }
+  };
+
+  const commit = async () => {
+    if (!preview?.items.length) return;
+    setBusy(true);
+    try {
+      for (const it of preview.items) {
+        const pid = "pk_" + genId();
+        await insertRow("packages", { id: pid, staffId: it.staffId, templateId: tplId, name: it.name, note: null });
+        await insertRows("package_milestones", tplMs.map((m) => ({
+          id: "pm_" + genId(), packageId: pid, position: m.position, name: m.name,
+          docNumber: null, plannedDate: it.dates[m.position] || null, actualDate: null, note: null,
+        })));
+      }
+      alert(`Đã import ${preview.items.length} gói thầu.`);
+      onClose();
+    } catch (e) { alert("Lỗi import: " + e.message); setBusy(false); }
+  };
+
+  return (
+    <Modal wide onClose={onClose}>
+      <h3>Import gói thầu từ Excel</h3>
+      <p className="small mut" style={{ marginTop: -8 }}>
+        Mỗi dòng = 1 gói thầu. Tải file mẫu → điền tên gói, cán bộ và ngày dự kiến ký từng mốc → tải lên.
+        Số văn bản và ngày thực tế điền sau trong app.
+      </p>
+      <div className="row" style={{ alignItems: "flex-end", marginBottom: 12 }}>
+        <div style={{ flex: "1 1 320px" }}>
+          <label className="lbl">Loại quy trình (bộ mốc áp cho mọi dòng)</label>
+          <Sel value={tplId} onChange={(e) => { setTplId(e.target.value); setPreview(null); }}>
+            {tpls.map((t) => <option key={t.id} value={t.id}>{t.name} ({data.template_milestones.filter((m) => m.templateId === t.id).length} mốc)</option>)}
+          </Sel>
+        </div>
+        <Btn kind="ghost" onClick={downloadTemplate}>⬇ Tải file mẫu</Btn>
+        <label className="btn" style={{ display: "inline-block" }}>
+          📄 Chọn file…
+          <input type="file" accept=".xlsx,.xls" style={{ display: "none" }}
+            onChange={(e) => e.target.files[0] && onFile(e.target.files[0])} />
+        </label>
+      </div>
+
+      {preview && (
+        <>
+          <div className="between" style={{ marginBottom: 8 }}>
+            <b>Xem trước: {preview.items.length} gói hợp lệ / {preview.total} dòng</b>
+            {preview.errors.length > 0 && <span className="tag">{preview.errors.length} cảnh báo</span>}
+          </div>
+          {preview.errors.length > 0 && (
+            <div className="card" style={{ background: "#fef6f6", marginBottom: 10, maxHeight: 120, overflow: "auto" }}>
+              {preview.errors.map((e, i) => <div key={i} className="small" style={{ color: "#b91c1c" }}>• {e}</div>)}
+            </div>
+          )}
+          <div className="scroll" style={{ maxHeight: "38vh" }}>
+            <table className="tbl">
+              <thead><tr><th>#</th><th>Cán bộ</th><th>Tên gói thầu</th><th>Số mốc có ngày</th></tr></thead>
+              <tbody>
+                {preview.items.map((it, i) => (
+                  <tr key={i}><td>{i + 1}</td><td>{it.staffLabel}</td><td>{it.name}</td><td>{it.nDates}/{tplMs.length}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <div className="right" style={{ marginTop: 14 }}>
+        <Btn kind="ghost" onClick={onClose}>Đóng</Btn>
+        <Btn onClick={commit} disabled={!preview?.items.length || busy}>
+          {busy ? "Đang import…" : `Import ${preview?.items.length || 0} gói`}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
 /* ---------------- Templates ---------------- */
 function Templates({ data }) {
   const tpls = data.workflow_templates;
@@ -604,8 +775,7 @@ function Templates({ data }) {
     setNewName("");
   };
   const delTpl = async (id) => {
-    if (data.packages.some((p) => p.templateId === id))
-      return alert("Không xóa được: đang có gói thầu dùng bộ mốc này.");
+    if (data.packages.some((p) => p.templateId === id)) return alert("Không xóa được: đang có gói thầu dùng bộ mốc này.");
     if (!confirm("Xóa bộ mốc này?")) return;
     await deleteRow("workflow_templates", id);
   };
@@ -626,10 +796,7 @@ function Templates({ data }) {
           const n = data.template_milestones.filter((m) => m.templateId === t.id).length;
           return (
             <div key={t.id} className="card">
-              <div className="between">
-                <b>{t.name}</b>
-                {t.isDefault && <span className="tag">mặc định</span>}
-              </div>
+              <div className="between"><b>{t.name}</b>{t.isDefault && <span className="tag">mặc định</span>}</div>
               <div className="small mut" style={{ margin: "6px 0 12px" }}>{n} mốc</div>
               <div className="row">
                 <Btn kind="ghost sm" onClick={() => setEdit(t.id)}>Sửa mốc</Btn>
@@ -701,7 +868,7 @@ function TemplateEditor({ data, tplId, onClose }) {
 /* ---------------- Staff ---------------- */
 function StaffView({ data, me }) {
   const staff = [...data.staff].sort(byPos);
-  const [form, setForm] = useState(null); // {id?, code, fullName, isManager}
+  const [form, setForm] = useState(null);
 
   const save = async () => {
     if (!form.fullName.trim()) return alert("Nhập họ tên.");
@@ -715,8 +882,7 @@ function StaffView({ data, me }) {
     } catch (e) { alert("Lỗi: " + e.message); }
   };
   const del = async (s) => {
-    if (data.packages.some((p) => p.staffId === s.id))
-      return alert("Không xóa được: cán bộ này đang có gói thầu. Chuyển gói sang người khác trước.");
+    if (data.packages.some((p) => p.staffId === s.id)) return alert("Không xóa được: cán bộ này đang có gói thầu.");
     if (!confirm(`Xóa cán bộ ${s.fullName}?`)) return;
     await deleteRow("staff", s.id);
   };
