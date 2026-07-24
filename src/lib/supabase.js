@@ -21,11 +21,11 @@ const staffToRow = (t) => ({ id: t.id, code: t.code, full_name: t.fullName, is_m
 const tplToApp = (r) => ({ id: r.id, name: r.name, isDefault: r.is_default });
 const tplToRow = (t) => ({ id: t.id, name: t.name, is_default: t.isDefault ?? false });
 
-const tmToApp = (r) => ({ id: r.id, templateId: r.template_id, position: r.position, name: r.name });
-const tmToRow = (t) => ({ id: t.id, template_id: t.templateId, position: t.position, name: t.name });
+const tmToApp = (r) => ({ id: r.id, templateId: r.template_id, position: r.position, name: r.name, offsetDays: r.offset_days });
+const tmToRow = (t) => ({ id: t.id, template_id: t.templateId, position: t.position, name: t.name, offset_days: t.offsetDays ?? null });
 
-const pkgToApp = (r) => ({ id: r.id, staffId: r.staff_id, templateId: r.template_id, name: r.name, note: r.note });
-const pkgToRow = (t) => ({ id: t.id, staff_id: t.staffId, template_id: t.templateId, name: t.name, note: t.note ?? null });
+const pkgToApp = (r) => ({ id: r.id, staffId: r.staff_id, templateId: r.template_id, name: r.name, note: r.note, planLocked: r.plan_locked });
+const pkgToRow = (t) => ({ id: t.id, staff_id: t.staffId, template_id: t.templateId, name: t.name, note: t.note ?? null, plan_locked: t.planLocked ?? false });
 
 const pmToApp = (r) => ({ id: r.id, packageId: r.package_id, position: r.position, name: r.name,
   docNumber: r.doc_number, plannedDate: r.planned_date, actualDate: r.actual_date, note: r.note });
