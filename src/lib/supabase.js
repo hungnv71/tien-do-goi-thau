@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 // Khóa anon được thiết kế để công khai; bảo vệ thật nằm ở RLS + hàm app_write_batch trên server.
-const SUPABASE_URL = "https://kcbwbeaqymoarzjuzvct.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjYndiZWFxeW1vYXJ6anV6dmN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNjkwMTAsImV4cCI6MjA5MTk0NTAxMH0.yn6jGGmVTONEa-hieqU0A5OfdswP5U06rmtVIYmaAeg";
+const SUPABASE_URL = "https://cajnghfbydkzyrpgoxwq.supabase.co"; // project "dieu-hanh-goi-thau-hop-dong" (tổ chức HUNGNV71)
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNham5naGZieWRrenlycGdveHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3MzI5MTcsImV4cCI6MjEwNjMwODkxN30.DM2Bac8JGyLDwfGU_whnwO3mO7cb2hVSCpak8xMZ7WY";
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 

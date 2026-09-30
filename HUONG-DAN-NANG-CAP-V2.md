@@ -2,6 +2,12 @@
 
 Phòng Quản lý hạ tầng - B.QLDAHTVT · ngày bàn giao 30/09/2026 · **chưa triển khai production**
 
+## 0. Trạng thái triển khai (30/09/2026)
+
+- CSDL mới: Supabase project **dieu-hanh-goi-thau-hop-dong** (`cajnghfbydkzyrpgoxwq`, tổ chức HUNGNV71 — tài khoản GitHub cá nhân). Đã chạy đủ schema v1 + dữ liệu cũ (5 cán bộ, 3 bộ mốc, 3 gói, 51 mốc) + migration 01 + 80 HĐ; bảng cũ đã khóa ghi trực tiếp ngay từ đầu (tương đương 03).
+- CSDL cũ `kcbwbeaqymoarzjuzvct` (tài khoản bqldahtvt.lhsk2026) giữ nguyên làm bản lưu; web cũ vẫn trỏ vào đó cho tới khi push bản mới.
+- Các mục 2 và 4 bên dưới (chạy SQL tay) **không cần làm nữa** với CSDL mới.
+
 ## 1. Đã thay đổi gì
 
 | Phần | Nội dung |
