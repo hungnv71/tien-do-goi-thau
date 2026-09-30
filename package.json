@@ -1,22 +1,28 @@
 {
-  "name": "tien-do-goi-thau",
+  "name": "dieu-hanh-goi-thau-hop-dong",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/rules.test.mjs",
+    "test:db": "node --test tests/db/migration.test.mjs",
+    "test:excel": "node --test tests/excel.test.mjs",
+    "gen:import": "python tools/gen_import_sql.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.12.7",
-    "xlsx": "^0.18.5",
-    "exceljs": "^4.4.0"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.0"
   }

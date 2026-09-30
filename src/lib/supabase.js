@@ -1,66 +1,91 @@
 import { createClient } from "@supabase/supabase-js";
 
-// ============================================================
-//  DÁN 2 GIÁ TRỊ CỦA ANH VÀO ĐÂY
-//  Supabase Dashboard > Project Settings > Data API / API Keys
-// ============================================================
+// Khóa anon được thiết kế để công khai; bảo vệ thật nằm ở RLS + hàm app_write_batch trên server.
 const SUPABASE_URL = "https://kcbwbeaqymoarzjuzvct.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtjYndiZWFxeW1vYXJ6anV6dmN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNjkwMTAsImV4cCI6MjA5MTk0NTAxMH0.yn6jGGmVTONEa-hieqU0A5OfdswP5U06rmtVIYmaAeg";
-// ============================================================
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-export const isConfigured = !SUPABASE_URL.includes("YOUR-PROJECT");
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 
-export const genId = () =>
-  Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+// Thứ tự: bảng cha trước bảng con
+export const TABLES = [
+  "app_settings", "holidays", "staff", "workflow_templates", "template_milestones", "contractors",
+  "packages", "package_milestones", "contracts", "contract_extensions", "contract_amendments",
+  "contract_milestones", "contract_acceptances", "contract_payments", "issues",
+];
 
-// ---- mappers: DB snake_case <-> app camelCase ----
-const staffToApp = (r) => ({ id: r.id, code: r.code, fullName: r.full_name, isManager: r.is_manager, position: r.position });
-const staffToRow = (t) => ({ id: t.id, code: t.code, full_name: t.fullName, is_manager: t.isManager, position: t.position ?? 0 });
+const camel = (s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+const snake = (s) => s.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
+export const toApp = (r) => { const o = {}; for (const k in r) o[camel(k)] = r[k]; return o; };
+export const toRow = (o) => { const r = {}; for (const k in o) r[snake(k)] = o[k] === "" ? null : o[k]; return r; };
 
-const tplToApp = (r) => ({ id: r.id, name: r.name, isDefault: r.is_default });
-const tplToRow = (t) => ({ id: t.id, name: t.name, is_default: t.isDefault ?? false });
+export const genId = (p = "") => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-const tmToApp = (r) => ({ id: r.id, templateId: r.template_id, position: r.position, name: r.name, offsetDays: r.offset_days });
-const tmToRow = (t) => ({ id: t.id, template_id: t.templateId, position: t.position, name: t.name, offset_days: t.offsetDays ?? null });
+/** Lỗi từ server dạng "AUTH:..." | "PERM:..." | "VALID:..." | "NOTFOUND:..." */
+export class AppError extends Error {
+  constructor(raw) {
+    const s = String(raw?.message || raw || "Lỗi không xác định");
+    const m = s.match(/^(AUTH|PERM|VALID|NOTFOUND):(.*)$/s);
+    super(m ? m[2].trim() : s);
+    this.kind = m ? m[1] : "ERR";
+  }
+}
 
-const pkgToApp = (r) => ({ id: r.id, staffId: r.staff_id, templateId: r.template_id, name: r.name, note: r.note, planLocked: r.plan_locked });
-const pkgToRow = (t) => ({ id: t.id, staff_id: t.staffId, template_id: t.templateId, name: t.name, note: t.note ?? null, plan_locked: t.planLocked ?? false });
+async function fetchTable(table) {
+  const out = [];
+  const page = 1000;
+  for (let from = 0; ; from += page) {
+    const { data, error } = await supabase.from(table).select("*").range(from, from + page - 1);
+    if (error) { const e = new Error(error.message); e.code = error.code; e.table = table; throw e; }
+    out.push(...data.map(toApp));
+    if (data.length < page) break;
+  }
+  return out;
+}
 
-const pmToApp = (r) => ({ id: r.id, packageId: r.package_id, position: r.position, name: r.name,
-  docNumber: r.doc_number, plannedDate: r.planned_date, actualDate: r.actual_date, note: r.note });
-const pmToRow = (t) => ({ id: t.id, package_id: t.packageId, position: t.position, name: t.name,
-  doc_number: t.docNumber ?? null, planned_date: t.plannedDate || null, actual_date: t.actualDate || null, note: t.note ?? null });
+/** Tải toàn bộ dữ liệu. Nếu chưa chạy migration v2 => lỗi kind MIGRATION. */
+export async function loadAll() {
+  try {
+    const res = await Promise.all(TABLES.map(fetchTable));
+    return Object.fromEntries(TABLES.map((t, i) => [t, res[i]]));
+  } catch (e) {
+    if (e.code === "42P01" || e.code === "PGRST205" || /does not exist|Could not find the table/i.test(e.message)) {
+      const err = new Error(`Chưa có bảng "${e.table}". Cần chạy migration supabase/01_v2_schema.sql.`);
+      err.kind = "MIGRATION";
+      throw err;
+    }
+    throw e;
+  }
+}
+export const reloadTable = fetchTable;
 
-export const MAPPERS = {
-  staff: { toApp: staffToApp, toRow: staffToRow },
-  workflow_templates: { toApp: tplToApp, toRow: tplToRow },
-  template_milestones: { toApp: tmToApp, toRow: tmToRow },
-  packages: { toApp: pkgToApp, toRow: pkgToRow },
-  package_milestones: { toApp: pmToApp, toRow: pmToRow },
+export function subscribeAll(onChange) {
+  const ch = supabase.channel("dieu-hanh-rt");
+  TABLES.forEach((table) => ch.on("postgres_changes", { event: "*", schema: "public", table }, (p) => onChange(table, p)));
+  ch.subscribe();
+  return () => supabase.removeChannel(ch);
+}
+
+async function rpc(fn, args) {
+  const { data, error } = await supabase.rpc(fn, args);
+  if (error) throw new AppError(error.message);
+  return data;
+}
+export const api = {
+  login: (staffId, pin) => rpc("app_login", { p_staff_id: staffId, p_pin: pin }),
+  setupPin: (staffId, pin) => rpc("app_setup_pin", { p_staff_id: staffId, p_new_pin: pin }),
+  whoami: (token) => rpc("app_whoami", { p_token: token }),
+  logout: (token) => rpc("app_logout", { p_token: token }),
+  changePin: (token, oldPin, newPin) => rpc("app_change_pin", { p_token: token, p_old: oldPin, p_new: newPin }),
+  resetPin: (token, staffId, reason) => rpc("app_reset_pin", { p_token: token, p_staff_id: staffId, p_reason: reason }),
+  pinStatus: () => rpc("app_pin_status", {}),
+  /** ops: [{table, op:'insert'|'update'|'delete', id, data (camelCase), reason}] */
+  write: (token, ops) => rpc("app_write_batch", {
+    p_token: token,
+    p_ops: ops.map((o) => ({ table: o.table, op: o.op, id: o.id, reason: o.reason || null, data: o.data ? toRow(o.data) : {} })),
+  }),
+  history: async (entity, ids) => {
+    const { data, error } = await supabase.from("change_log").select("*").in("entity_id", ids).order("at", { ascending: false }).limit(300);
+    if (error) throw new AppError(error.message);
+    return data.map(toApp);
+  },
 };
-
-export const TABLE_ORDER = ["staff", "workflow_templates", "template_milestones", "packages", "package_milestones"];
-
-export async function fetchAll(table) {
-  const { data, error } = await supabase.from(table).select("*");
-  if (error) throw error;
-  return data.map(MAPPERS[table].toApp);
-}
-export async function insertRow(table, o) {
-  const { error } = await supabase.from(table).insert(MAPPERS[table].toRow(o));
-  if (error) throw error;
-}
-export async function insertRows(table, arr) {
-  if (!arr.length) return;
-  const { error } = await supabase.from(table).insert(arr.map(MAPPERS[table].toRow));
-  if (error) throw error;
-}
-export async function updateRow(table, id, patch) {
-  const { error } = await supabase.from(table).update(patch).eq("id", id);
-  if (error) throw error;
-}
-export async function deleteRow(table, id) {
-  const { error } = await supabase.from(table).delete().eq("id", id);
-  if (error) throw error;
-}

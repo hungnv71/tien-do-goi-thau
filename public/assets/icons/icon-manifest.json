@@ -1,0 +1,159 @@
+{
+  "description": "8 icon 3D cho web quản lý gói thầu và hợp đồng",
+  "generator": "ImageGen tích hợp",
+  "format": "Raster PNG và WebP, không phải mô hình 3D",
+  "icons": [
+    {
+      "id": "01-tender",
+      "label": "Lựa chọn nhà thầu",
+      "png": "assets/icons/01-tender.png",
+      "webp": "assets/icons/01-tender.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "02-contract",
+      "label": "Hợp đồng đã ký",
+      "png": "assets/icons/02-contract.png",
+      "webp": "assets/icons/02-contract.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "03-deadline",
+      "label": "Cảnh báo thời hạn",
+      "png": "assets/icons/03-deadline.png",
+      "webp": "assets/icons/03-deadline.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "04-extension",
+      "label": "Gia hạn hợp đồng",
+      "png": "assets/icons/04-extension.png",
+      "webp": "assets/icons/04-extension.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "05-payment",
+      "label": "Giá trị & thanh toán",
+      "png": "assets/icons/05-payment.png",
+      "webp": "assets/icons/05-payment.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "06-progress",
+      "label": "Tiến độ & báo cáo",
+      "png": "assets/icons/06-progress.png",
+      "webp": "assets/icons/06-progress.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "07-closeout",
+      "label": "Hoàn tất & thanh lý",
+      "png": "assets/icons/07-closeout.png",
+      "webp": "assets/icons/07-closeout.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    },
+    {
+      "id": "08-responsibility",
+      "label": "Người phụ trách",
+      "png": "assets/icons/08-responsibility.png",
+      "webp": "assets/icons/08-responsibility.webp",
+      "pngSize": [
+        1024,
+        1024
+      ],
+      "webpSize": [
+        256,
+        256
+      ],
+      "recommendedDisplaySize": [
+        64,
+        64
+      ],
+      "decorativeAlt": ""
+    }
+  ]
+}
