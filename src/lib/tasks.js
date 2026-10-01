@@ -128,7 +128,8 @@ export function taskKpis(rows, ctx) {
 export function staffRanking(rows, data, reportDate, sortBy = "open") {
   const week = isoWeek(reportDate);
   const reported = new Set((data.weekly_reports || []).filter((w) => w.week === week).map((w) => w.staffId));
-  const staff = data.staff.filter((s) => s.active !== false && rank(s.role) >= 1);
+  // Không xếp hạng lãnh đạo phòng (người giao việc)
+  const staff = data.staff.filter((s) => s.active !== false && rank(s.role) >= 1 && s.role !== "manager");
   const out = staff.map((s) => {
     const mine = rows.filter((r) => r.staffId === s.id);
     const real = mine.filter((r) => !r.virtual);

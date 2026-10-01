@@ -132,7 +132,7 @@ function TaskList({ setParams }) {
         { key: "s", label: "Chủ trì", render: (r) => <span className="nowrap">{r.staffName}</span> },
         { key: "g", label: "Ngày giao", render: (r) => <span className="nowrap num">{fmtD(r.rec.assignedDate)}</span> },
         { key: "d", label: "Hạn", render: (r) => (
-          <div className="nowrap num">{!r.virtual && r.rec.dueLocked !== false && <Lock size={12} aria-label="Hạn đã khóa" style={{ marginRight: 3, color: "var(--muted)" }} />}{fmtD(r.ev.due)}
+          <div className="nowrap num">{!r.virtual && r.ev.due && <Lock size={12} aria-label="Hạn đã khóa" style={{ marginRight: 3, color: "var(--muted)" }} />}{fmtD(r.ev.due)}
             {r.ev.extended && <div className="small mut">gốc {fmtD(r.rec.originalDue)}</div>}
             {r.ev.pendingExt && <div><Badge tone="blue">Xin GH → {fmtD(r.rec.extRequestedDue)}</Badge></div>}</div>) },
         { key: "e", label: "Đánh giá", render: (r) => stateBadge(r.ev) },
@@ -268,16 +268,15 @@ function TaskDetail({ id, onClose }) {
   const editable = can.edit(t.staffId);
   const week = isoWeek(today);
   const hist = (data.task_updates || []).filter((u) => u.taskId === t.id).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const locked = t.dueLocked !== false;
+  const locked = !!t.dueDate;   // hạn đã nhập: khóa cứng với cán bộ
   const approve = async () => { if (await write([{ table: "tasks", op: "update", id: t.id, reason: `Duyệt gia hạn: ${t.extReason || ""}`, data: { dueDate: t.extRequestedDue, extStatus: "approved" } }], "Đã duyệt gia hạn")) setMode(null); };
   const reject = async () => { const reason = await askReason("Lý do từ chối đề nghị gia hạn"); if (reason) write([{ table: "tasks", op: "update", id: t.id, reason, data: { extStatus: "rejected" } }], "Đã từ chối đề nghị gia hạn"); };
   const sendExt = async () => { if (await write([{ table: "tasks", op: "update", id: t.id, data: { extRequestedDue: ext.due, extReason: ext.reason.trim(), extStatus: "pending" } }], "Đã gửi đề nghị gia hạn — chờ lãnh đạo duyệt")) setMode(null); };
-  const toggleLock = async () => { const reason = await askReason(locked ? "Lý do mở khóa hạn nhiệm vụ" : "Khóa lại hạn nhiệm vụ"); if (reason) write([{ table: "tasks", op: "update", id: t.id, reason, data: { dueLocked: !locked } }], locked ? "Đã mở khóa hạn" : "Đã khóa hạn"); };
   const del = async () => { const reason = await askReason("Xóa nhiệm vụ? (khuyến nghị chuyển trạng thái Hủy)"); if (reason && (await write([{ table: "tasks", op: "delete", id: t.id, reason }], "Đã xóa nhiệm vụ"))) onClose(); };
   const saveQuick = async () => { if (await write(updateOps(t, qf, me.id, week), "Đã cập nhật tiến độ")) setMode(null); };
   const info = [
     ["Loại nhiệm vụ", t.taskType], ["Văn bản / nguồn giao", t.sourceDoc || "—"], ["Người / cấp giao", t.assigner || "—"], ["Chủ trì", r.staffName], ["Phối hợp", t.collaborators || "—"],
-    ["Ngày giao", fmtD(t.assignedDate)], ["Hạn hiện hành", <span key="d">{locked && <Lock size={12} aria-hidden />} {fmtD(t.dueDate)}{locked ? " (đã khóa)" : " (đang mở khóa)"}</span>],
+    ["Ngày giao", fmtD(t.assignedDate)], ["Hạn hiện hành", <span key="d">{locked && <Lock size={12} aria-hidden />} {fmtD(t.dueDate)}{locked ? " (khóa — chỉ TP / quản trị đổi)" : ""}</span>],
     ["Hạn giao ban đầu", fmtD(t.originalDue)], ["Gia hạn", t.extStatus ? `${EXT_TASK[t.extStatus]}${t.extRequestedDue ? " → " + fmtDate(t.extRequestedDue) : ""}${t.extReason ? ` · ${t.extReason}` : ""}` : "—"],
     ["Sản phẩm đầu ra", t.output || "—"], ["% hoàn thành", pctText(r.percent) + (r.pkg ? " (tự động theo mốc gói thầu)" : "")], ["Trạng thái", TASK_STATUS[r.ev.status]], ["Ngày hoàn thành", fmtD(r.ev.completed)],
     ["Kế hoạch phòng", r.plan ? `${r.plan.docNo ? r.plan.docNo + " · " : ""}${r.plan.title}` : "—"],
@@ -292,7 +291,6 @@ function TaskDetail({ id, onClose }) {
         {editable && OPEN(r.ev.code) && locked && !can.manage && <Btn kind="ghost" sm icon={CalendarClock} onClick={() => { setExt({ due: t.extRequestedDue || "", reason: "" }); setMode("ext"); }}>Đề nghị gia hạn</Btn>}
         {can.manage && r.ev.pendingExt && <><Btn sm icon={Check} onClick={approve}>Duyệt gia hạn → {fmtD(t.extRequestedDue)}</Btn><Btn kind="ghost" sm icon={XIcon} onClick={reject}>Từ chối</Btn></>}
         <span style={{ flex: 1 }} />
-        {can.manage && <Btn kind="ghost" sm icon={locked ? Unlock : Lock} onClick={toggleLock}>{locked ? "Mở khóa hạn" : "Khóa hạn"}</Btn>}
         {can.manage && <Btn kind="danger" sm icon={Trash2} onClick={del}>Xóa</Btn>}
       </div>
       {mode === "quick" && qf && (
@@ -347,7 +345,7 @@ export function TaskForm({ init = {}, onClose }) {
   const [f, setF] = useState(() => ({ taskType: "Nhiệm vụ được giao", staffId: me.id, assignedDate: today, status: "not_started", percent: 0, recurring: false, ...init }));
   const [err, setErr] = useState("");
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
-  const locked = !isNew && init.dueLocked !== false && !can.manage;
+  const locked = !isNew && !!init.dueDate && !can.manage;
   const staff = data.staff.filter((s) => s.active !== false && rank(s.role) >= 1).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   const pkgs = allPkgRows.filter((p) => !["cancelled"].includes(p.ev.code)).sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const save = async () => {
@@ -381,7 +379,7 @@ export function TaskForm({ init = {}, onClose }) {
         <Field label="Văn bản / nguồn giao"><Inp value={f.sourceDoc || ""} onChange={set("sourceDoc")} placeholder="Số KH, CV, VO…" /></Field>
         <Field label="Người / cấp giao"><Inp value={f.assigner || ""} onChange={set("assigner")} placeholder="VD: TGĐ, Trưởng phòng" /></Field>
         <Field label="Ngày giao"><Inp type="date" value={f.assignedDate || ""} onChange={set("assignedDate")} /></Field>
-        <Field label={<>Hạn hoàn thành {locked && <Lock size={12} aria-label="đã khóa" />}</>} hint={locked ? "Hạn đã khóa — dùng “Đề nghị gia hạn”." : isNew ? "Sau khi lưu, hạn được khóa cứng." : undefined}>
+        <Field label={<>Hạn hoàn thành {locked && <Lock size={12} aria-label="đã khóa" />}</>} hint={locked ? "Hạn đã khóa — dùng “Đề nghị gia hạn”." : !can.manage ? "Sau khi lưu, hạn khóa cứng — chỉ TP / quản trị đổi." : undefined}>
           <Inp type="date" disabled={locked} value={f.dueDate || ""} onChange={set("dueDate")} /></Field>
         <Field label="Kế hoạch phòng"><Sel value={f.planId || ""} onChange={set("planId")}><option value="">—</option>{(data.task_plans || []).map((p) => <option key={p.id} value={p.id}>{p.docNo ? p.docNo + " · " : ""}{p.title}</option>)}</Sel></Field>
         <Field label="Gắn gói thầu (tự lấy tiến độ)"><Sel value={f.packageId || ""} onChange={set("packageId")}><option value="">—</option>{pkgs.map((p) => <option key={p.id} value={p.id}>{p.code ? p.code + " · " : ""}{p.name.slice(0, 70)}</option>)}</Sel></Field>

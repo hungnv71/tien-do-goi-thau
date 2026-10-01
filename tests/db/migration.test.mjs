@@ -227,6 +227,17 @@ test("Nhiệm vụ: hạn khóa cứng, đề nghị gia hạn, TP duyệt; nh�
   await rejects(write(db, tokA, [{ table: "tasks", op: "delete", id: "t1" }]), /Chỉ lãnh đạo được xóa/);
   await rejects(write(db, tokA, [{ table: "task_plans", op: "insert", id: "kh1", data: { title: "KH" } }]), /lãnh đạo phòng/);
   await write(db, tokTP, [{ table: "task_plans", op: "insert", id: "kh1", data: { title: "KH tháng 10", doc_no: "01/KH-QLHT" } }]);
+  // Hạn mốc gói thầu khóa cứng với cán bộ, kể cả khi chưa bật "khóa kế hoạch"; chỉ điền được hạn còn trống
+  await write(db, tokA, [{ table: "packages", op: "insert", id: "pkA", data: { name: "Gói A", staff_id: "st_tucna", plan_locked: false } },
+    { table: "package_milestones", op: "insert", id: "pmA1", data: { package_id: "pkA", position: 1, name: "M1", planned_date: "2026-10-05", baseline_date: "2026-10-05" } },
+    { table: "package_milestones", op: "insert", id: "pmA2", data: { package_id: "pkA", position: 2, name: "M2" } }]);
+  await rejects(write(db, tokA, [{ table: "package_milestones", op: "update", id: "pmA1", data: { planned_date: "2026-10-09" }, reason: "x" }]), /Hạn mốc đã khóa/);
+  await write(db, tokA, [{ table: "package_milestones", op: "update", id: "pmA2", data: { planned_date: "2026-10-12", baseline_date: "2026-10-12" } }]);
+  await write(db, tokA, [{ table: "package_milestones", op: "update", id: "pmA1", data: { actual_date: "2026-10-04" } }]);
+  await write(db, tokTP, [{ table: "package_milestones", op: "update", id: "pmA1", data: { planned_date: "2026-10-09" }, reason: "TP điều chỉnh" }]);
+  // Nhiệm vụ: lãnh đạo mở khóa cũng không cho cán bộ tự đổi hạn
+  await write(db, tokTP, [{ table: "tasks", op: "update", id: "t1", data: { due_locked: false } }]);
+  await rejects(write(db, tokA, [{ table: "tasks", op: "update", id: "t1", data: { due_date: "2026-10-25" }, reason: "x" }]), /Hạn nhiệm vụ đã khóa/);
 });
 
 test("Tổng hợp tuần cho n8n: sai khóa bị chặn, đúng khóa trả danh sách + HTML", async () => {

@@ -218,7 +218,7 @@ export function PackageDetail({ id, onClose }) {
 
   return (
     <Modal size="wide" title={<>{p.code && <span className="code mut" style={{ fontSize: 14 }}>{p.code} · </span>}{p.name}</>}
-      sub={<span className="row" style={{ gap: 8 }}>{statusBadge(ev)}<span>{r.staffName}</span><span>·</span><span>{r.tplName || "Chưa có bộ mốc"}</span>{locked && <Badge tone="gray">Kế hoạch đã khóa</Badge>}</span>}
+      sub={<span className="row" style={{ gap: 8 }}>{statusBadge(ev)}<span>{r.staffName}</span><span>·</span><span>{r.tplName || "Chưa có bộ mốc"}</span><Badge tone="gray">Hạn các mốc khóa cứng</Badge></span>}
       onClose={onClose}>
       <div className="stepper" aria-label="Hành trình lựa chọn nhà thầu">
         {STAGES.map((s) => { const st = stageState(s); if (st === "skip") return null; return (
@@ -232,8 +232,7 @@ export function PackageDetail({ id, onClose }) {
         <span className="small mut">Tiến độ các mốc: {ev.done}/{ev.applicable} mốc áp dụng</span>
         <span className="small mut">· Mục tiêu ký HĐ: <b>{fmtD(ev.targetSign)}</b></span>
         <span style={{ flex: 1 }} />
-        {editable && (can.manage || !locked) && <Btn kind="ghost" sm icon={locked ? Unlock : Lock} onClick={toggleLock}>{locked ? "Mở khóa kế hoạch" : "Khóa kế hoạch"}</Btn>}
-        {editable && locked && !can.manage && <span className="small mut">Kế hoạch đã khóa cứng — cần lãnh đạo mở khóa</span>}
+        {!can.manage && <span className="small mut"><Lock size={12} aria-hidden /> Hạn các mốc đã khóa — chỉ Trưởng phòng / quản trị điều chỉnh</span>}
         {can.manage && <Btn kind="danger" sm icon={Trash2} onClick={del}>Xóa</Btn>}
       </div>
       <div className="tabs" role="tablist">
@@ -298,7 +297,7 @@ function MilestoneForm({ m, pkg, milestones, onClose }) {
   const { write, can, data, cfg } = useApp();
   const [f, setF] = useState({ ...m });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
-  const locked = !!pkg.planLocked && !can.manage;
+  const locked = !!m.plannedDate && !can.manage;   // hạn đã có: chỉ TP / quản trị đổi
   const save = async () => {
     const fields = ["actualStart", "actualDate", "ownerId", "collaborators", "docNumber", "evidenceUrl", "delayReason", "nextAction", "note"];
     const patch = {};
@@ -334,7 +333,7 @@ function MilestoneForm({ m, pkg, milestones, onClose }) {
     <Modal size="mid" title={`Cập nhật mốc: ${m.name}`} sub={`KH ban đầu: ${fmtD(m.baselineDate)} (giữ nguyên)`} onClose={onClose}
       footer={<><Btn kind="ghost" onClick={onClose}>Hủy</Btn><Btn onClick={save}>Lưu</Btn></>}>
       <div className="form-grid">
-        <Field label="Hạn hiện hành" hint={locked ? "Kế hoạch đã khóa — cần lãnh đạo điều chỉnh" : "Đổi hạn cần lý do; có thể tịnh tiến các mốc sau"}>
+        <Field label="Hạn hiện hành" hint={locked ? "Hạn đã khóa cứng — chỉ Trưởng phòng / quản trị điều chỉnh" : can.manage ? "Đổi hạn cần lý do; có thể tịnh tiến các mốc sau" : "Sau khi lưu, hạn được khóa cứng"}>
           <Inp type="date" value={f.plannedDate || ""} disabled={locked} onChange={set("plannedDate")} /></Field>
         <Field label="Bắt đầu thực tế"><Inp type="date" value={f.actualStart || ""} onChange={set("actualStart")} /></Field>
         <Field label="Hoàn thành thực tế"><Inp type="date" value={f.actualDate || ""} onChange={set("actualDate")} /></Field>
@@ -382,7 +381,7 @@ function PackageInfo({ r, editable }) {
         <Field label="Số VB chủ trương"><Inp disabled={dis} value={f.policyDocNo || ""} onChange={set("policyDocNo")} /></Field>
         <Field label="Ngày VB chủ trương"><Inp disabled={dis} type="date" value={f.policyDocDate || ""} onChange={set("policyDocDate")} /></Field>
         <Field label="Ngày phê duyệt chủ trương" hint="Mốc bắt đầu theo dõi"><Inp disabled={dis} type="date" value={f.policyApprovedDate || ""} onChange={set("policyApprovedDate")} /></Field>
-        <Field label="Mục tiêu ký HĐ" hint="Để trống = lấy hạn mốc ký HĐ"><Inp disabled={dis} type="date" value={f.targetSignDate || ""} onChange={set("targetSignDate")} /></Field>
+        <Field label="Mục tiêu ký HĐ" hint="Để trống = lấy hạn mốc ký HĐ"><Inp disabled={dis || (!!p.targetSignDate && !can.manage)} type="date" value={f.targetSignDate || ""} onChange={set("targetSignDate")} /></Field>
         <Field label="Đơn vị phối hợp"><Inp disabled={dis} value={f.coordinatorUnit || ""} onChange={set("coordinatorUnit")} /></Field>
         <Field label="Trạng thái gói"><Sel disabled={dis} value={f.status || "active"} onChange={set("status")}><option value="active">Đang thực hiện</option><option value="paused">Tạm dừng</option><option value="cancelled">Hủy</option></Sel></Field>
         <Field label="Cán bộ chính" hint={can.manage ? "" : "Chỉ lãnh đạo giao lại"}><Sel disabled={dis || !can.manage} value={f.staffId || ""} onChange={set("staffId")}><option value="">Chưa phân công</option>{data.staff.filter((s) => s.active !== false).map((s) => <option key={s.id} value={s.id}>{staffLabel(s)}</option>)}</Sel></Field>
@@ -440,7 +439,7 @@ function AddPackage({ onClose }) {
             <Field label="Bộ mốc quy trình"><Sel value={f.templateId} onChange={set("templateId")}>{tpls.map((t) => <option key={t.id} value={t.id}>{t.name} ({data.template_milestones.filter((m) => m.templateId === t.id).length} mốc)</option>)}</Sel></Field>
             <Field label="Ngày phê duyệt chủ trương" hint="Mốc bắt đầu; các mốc sau tự tính theo khoảng ngày chuẩn"><Inp type="date" value={f.policyApprovedDate} onChange={set("policyApprovedDate")} /></Field>
           </div>
-          <label className="row"><input type="checkbox" checked={f.planLocked} onChange={set("planLocked")} /> Khóa cứng kế hoạch sau khi tạo (cán bộ không tự đổi hạn)</label>
+          <div className="note"><Lock size={12} aria-hidden /> Sau khi tạo, hạn các mốc được <b>khóa cứng</b>: chỉ Trưởng phòng / quản trị được điều chỉnh (có lý do, lưu lịch sử).</div>
           <p className="small mut">Khoảng ngày trong bộ mốc là khung quản lý nội bộ do quản trị cấu hình, không phải thời hạn pháp lý bắt buộc. Tính theo {tpl?.dayMode === "working" ? "ngày làm việc (theo lịch nghỉ)" : "ngày lịch"}.</p>
         </div>
         <div>

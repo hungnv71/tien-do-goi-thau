@@ -57,7 +57,7 @@ test("Gói thầu: gắn nhiệm vụ lấy % tự động; gói chưa gắn => 
 });
 
 test("Xếp hạng theo việc tồn, thống kê tháng, KPI, cảnh báo dữ liệu", () => {
-  const data = { staff: [{ id: "a", fullName: "An", role: "staff" }, { id: "b", fullName: "Bình", role: "staff" }, { id: "v", fullName: "Xem", role: "viewer" }],
+  const data = { staff: [{ id: "a", fullName: "An", role: "staff" }, { id: "b", fullName: "Bình", role: "staff" }, { id: "v", fullName: "Xem", role: "viewer" }, { id: "tp", fullName: "TP", role: "manager" }],
     tasks: [
       { id: "1", title: "x", staffId: "a", assignedDate: "2026-09-01", dueDate: "2026-09-25", status: "in_progress", percent: 40, lastReportWeek: "2026-W40" },
       { id: "2", title: "y", staffId: "a", assignedDate: "2026-09-10", dueDate: "2026-10-03", status: "in_progress", percent: 100, lastReportWeek: "2026-W40" },
@@ -67,7 +67,7 @@ test("Xếp hạng theo việc tồn, thống kê tháng, KPI, cảnh báo dữ 
     ], task_plans: [], weekly_reports: [{ staffId: "a", week: "2026-W40" }] };
   const rows = buildTaskRows(data, [], R, cfg);
   const rk = staffRanking(rows, data, R);
-  assert.deepEqual(rk.map((x) => [x.name, x.rank, x.backlog, x.overdue]), [["An", 1, 2, 1], ["Bình", 2, 1, 0]]); // không tính tài khoản chỉ xem
+  assert.deepEqual(rk.map((x) => [x.name, x.rank, x.backlog, x.overdue]), [["An", 1, 2, 1], ["Bình", 2, 1, 0]]); // không tính tài khoản chỉ xem và Trưởng phòng
   assert.equal(rk[0].reported, true); assert.equal(rk[1].reported, false);
   assert.equal(rk[1].doneMonth, 1);
   const mx = monthMatrix(rows, rk.map((x) => x.staff), 2026, "assigned");

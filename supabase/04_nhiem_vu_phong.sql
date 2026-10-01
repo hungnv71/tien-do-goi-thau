@@ -149,10 +149,14 @@ begin
      and coalesce((o->>'plan_locked')::boolean, false) and not coalesce((d->>'plan_locked')::boolean, false) and rk < 2 then
     raise exception 'PERM:Kế hoạch đã khóa cứng — chỉ lãnh đạo được mở khóa';
   end if;
+  -- Hạn mốc gói thầu KHÓA CỨNG với cán bộ: đã có hạn thì chỉ Trưởng phòng / quản trị được đổi (cán bộ chỉ được điền hạn còn trống)
   if p_table = 'package_milestones' and p_op = 'update' and d ? 'planned_date'
-     and (d->>'planned_date') is distinct from (o->>'planned_date') then
-    select plan_locked into lk from packages where id = o->>'package_id';
-    if coalesce(lk, false) and rk < 2 then raise exception 'PERM:Kế hoạch đã khóa — cần lãnh đạo điều chỉnh hạn'; end if;
+     and o->>'planned_date' is not null and (d->>'planned_date') is distinct from (o->>'planned_date') and rk < 2 then
+    raise exception 'PERM:Hạn mốc đã khóa — chỉ Trưởng phòng / quản trị được điều chỉnh';
+  end if;
+  if p_table = 'packages' and p_op = 'update' and d ? 'target_sign_date'
+     and o->>'target_sign_date' is not null and (d->>'target_sign_date') is distinct from (o->>'target_sign_date') and rk < 2 then
+    raise exception 'PERM:Mục tiêu ký HĐ đã khóa — chỉ Trưởng phòng / quản trị được điều chỉnh';
   end if;
   if p_table = 'package_milestones' and p_op = 'update' and d ? 'baseline_date'
      and o->>'baseline_date' is not null and (d->>'baseline_date') is distinct from (o->>'baseline_date') and rk < 3 then
@@ -161,7 +165,8 @@ begin
 
   -- Khóa hạn nhiệm vụ
   if p_table = 'tasks' and p_op = 'update' then
-    if d ? 'due_date' and (d->>'due_date') is distinct from (o->>'due_date') and coalesce((o->>'due_locked')::boolean, true) and rk < 2 then
+    -- Hạn nhiệm vụ KHÓA CỨNG với cán bộ ngay khi đã nhập (kể cả lúc tạo); chỉ Trưởng phòng / quản trị đổi
+    if d ? 'due_date' and o->>'due_date' is not null and (d->>'due_date') is distinct from (o->>'due_date') and rk < 2 then
       raise exception 'PERM:Hạn nhiệm vụ đã khóa — hãy gửi đề nghị gia hạn để lãnh đạo duyệt';
     end if;
     if d ? 'due_locked' and coalesce((o->>'due_locked')::boolean, true) and not coalesce((d->>'due_locked')::boolean, true) and rk < 2 then

@@ -19,7 +19,7 @@ WEEK, WEEK_DAY = "2026-W40", "2026-09-29"
 
 # tài khoản -> (họ tên, email, vị trí). Email theo mẫu tài khoản@viettel.com.vn; để trống nếu tài khoản không theo mẫu.
 STAFF = {
-    "thainn2": ("Thái (Trưởng phòng)", "thainn2@viettel.com.vn", 0),
+    "thainn2": ("Nguyễn Như Thái", "thainn2@viettel.com.vn", 0),
     "hungnv71": ("Nguyễn Việt Hùng", "hungnv71@viettel.com.vn", 1),
     "hungnt16": ("Nguyễn Thanh Hùng", "hungnt16@viettel.com.vn", 2),
     "dangnt2": ("Nguyễn Thị Dàng", "dangnt2@viettel.com.vn", 3),

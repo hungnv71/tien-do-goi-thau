@@ -148,9 +148,24 @@ export function ColumnMenu({ columns, visible, onChange }) {
 
 /** Bảng có cột cố định (2 cột đầu), cuộn ngang/dọc trong vùng bảng. */
 export function DataTable({ columns, rows, rowKey = (r) => r.id, onRow, empty, short, hl }) {
+  // Thanh cuộn ngang phụ ở TRÊN bảng (đồng bộ với thanh dưới) — không phải kéo xuống cuối bảng mới cuộn được
+  const wrap = useRef(null), top = useRef(null), inner = useRef(null);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const w = wrap.current;
+    if (!w) return;
+    const upd = () => { setOver(w.scrollWidth > w.clientWidth + 2); if (inner.current) inner.current.style.width = `${w.scrollWidth}px`; };
+    upd();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(upd) : null;
+    ro?.observe(w); if (w.firstChild) ro?.observe(w.firstChild);
+    return () => ro?.disconnect();
+  }, [rows, columns, over]);
+  const sync = (from, to) => { if (from.current && to.current && to.current.scrollLeft !== from.current.scrollLeft) to.current.scrollLeft = from.current.scrollLeft; };
   if (!rows.length) return empty || <Empty title="Không có hồ sơ phù hợp bộ lọc" />;
   return (
-    <div className={`tbl-wrap ${short ? "short" : ""}`}>
+    <>
+    {over && <div className="top-scroll" ref={top} onScroll={() => sync(top, wrap)} aria-hidden><div ref={inner} style={{ height: 1 }} /></div>}
+    <div className={`tbl-wrap ${short ? "short" : ""}`} ref={wrap} onScroll={() => sync(wrap, top)}>
       <table className="tbl">
         <thead><tr>{columns.map((c, i) => <th key={c.key} className={`${i === 0 && c.stick ? "stick1" : ""} ${i === 1 && c.stick ? "stick2" : ""} ${c.right ? "r" : ""}`} scope="col">{c.label}</th>)}</tr></thead>
         <tbody>
@@ -162,6 +177,7 @@ export function DataTable({ columns, rows, rowKey = (r) => r.id, onRow, empty, s
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
