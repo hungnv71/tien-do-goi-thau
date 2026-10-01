@@ -509,12 +509,7 @@ export function TaskOverview() {
   return (
     <>
       <TaskKpiCards rows={taskRows} onPick={(k) => go("nhiem-vu", { tab: "ds", kpi: k })} />
-      <section className="card" style={{ marginBottom: 14 }}>
-        <div className="card-h"><h2>Nhiệm vụ cần xử lý {actions.length > 0 && <Badge tone={actions.some((a) => a.kind === "overdue") ? "red" : "amber"}>{actions.filter((a) => a.kind === "overdue").length} quá hạn · {actions.length} việc</Badge>}</h2>
-          <Btn kind="ghost" sm onClick={() => go("canh-bao", { m: "nv" })}>Xem tất cả <ChevronRight size={14} /></Btn></div>
-        {actions.length ? <ActionTable items={actions.slice(0, 8)} onOpen={(a) => go("nhiem-vu", { open: a.recordId })} /> : <Empty icon="07-closeout" title="Không có nhiệm vụ quá hạn hoặc sắp đến hạn" />}
-      </section>
-      <div className="grid2">
+      <div className="grid2" style={{ marginBottom: 14 }}>
         <section className="card"><div className="card-h"><h2>Việc đang mở theo cán bộ</h2><Btn kind="ghost" sm onClick={() => go("nhiem-vu", { tab: "xh" })}>Xếp hạng <ChevronRight size={14} /></Btn></div>
           {chart.length ? <StaffChart data={chart} unit="nhiệm vụ" /> : <Empty title="Không có nhiệm vụ đang mở" />}</section>
         <section className="card"><div className="card-h"><h2>Báo cáo {weekLabel(week)}</h2></div>
@@ -522,6 +517,11 @@ export function TaskOverview() {
           <p className="small mut">Xanh: đã gửi tuần này · Vàng: còn việc mở nhưng chưa gửi. Hệ thống tự gửi mail nhắc chiều thứ Sáu và sáng thứ Hai (n8n).</p>
         </section>
       </div>
+      <section className="card" style={{ marginBottom: 14 }}>
+        <div className="card-h"><h2>Nhiệm vụ cần xử lý {actions.length > 0 && <Badge tone={actions.some((a) => a.kind === "overdue") ? "red" : "amber"}>{actions.filter((a) => a.kind === "overdue").length} quá hạn · {actions.length} việc</Badge>}</h2>
+          <Btn kind="ghost" sm onClick={() => go("canh-bao", { m: "nv" })}>Xem tất cả <ChevronRight size={14} /></Btn></div>
+        {actions.length ? <ActionTable items={actions.slice(0, 8)} onOpen={(a) => go("nhiem-vu", { open: a.recordId })} /> : <Empty icon="07-closeout" title="Không có nhiệm vụ quá hạn hoặc sắp đến hạn" />}
+      </section>
     </>
   );
 }

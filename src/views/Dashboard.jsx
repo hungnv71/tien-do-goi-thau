@@ -27,10 +27,10 @@ export default function Dashboard() {
       <Banner icon="06-progress" title="Điều hành gói thầu, hợp đồng & nhiệm vụ" sub={<>{cfg.orgName} · Ngày dữ liệu: <b>{fmtDate(reportDate)}</b></>}>
         <Btn kind="ghost" icon={Download} onClick={() => (mod === "nv" ? exportTasksWorkbook({ data, rows: taskRows, reportDate, cfg, filters, me }) : exportWorkbook({ data, pkgRows: mod === "lcnt" ? pkgRows : [], hdRows: mod === "hd" ? hdRows : [], alerts, reportDate, cfg, filters, me }))}>Xuất Excel</Btn>
       </Banner>
-      <div className="tabs" role="tablist" aria-label="Phân hệ">
-        <button role="tab" aria-selected={mod === "lcnt"} className={mod === "lcnt" ? "on" : ""} onClick={() => go("dashboard", { m: "lcnt" })}>Lựa chọn nhà thầu</button>
-        <button role="tab" aria-selected={mod === "hd"} className={mod === "hd" ? "on" : ""} onClick={() => go("dashboard", { m: "hd" })}>Hợp đồng đã ký</button>
-        <button role="tab" aria-selected={mod === "nv"} className={mod === "nv" ? "on" : ""} onClick={() => go("dashboard", { m: "nv" })}>Nhiệm vụ phòng</button>
+      <div className="modtabs" role="tablist" aria-label="Phân hệ">
+        {[["lcnt", "Lựa chọn nhà thầu"], ["hd", "Hợp đồng đã ký"], ["nv", "Nhiệm vụ phòng"]].map(([k, l], i) => (
+          <button key={k} role="tab" aria-selected={mod === k} className={mod === k ? "on" : ""} onClick={() => go("dashboard", { m: k })}><span className="n" aria-hidden>{i + 1}</span>{l}</button>
+        ))}
       </div>
       <FilterBar showContractor={mod === "hd"} tasksOnly={mod === "nv"} />
       <PastDateNote />
@@ -52,6 +52,9 @@ export default function Dashboard() {
         Các thẻ cảnh báo là tập con có thể giao nhau, không cộng thành tổng số hồ sơ. Chưa có dữ liệu lịch sử nên không hiển thị tăng/giảm so với kỳ trước.
       </p>
 
+      {rows.length >= 3 ? (mod === "lcnt" ? <LcntCharts rows={pkgRows} /> : <HdCharts rows={hdRows} />) :
+        <div className="note" style={{ marginBottom: 14 }}>Chỉ có {rows.length} hồ sơ trong phạm vi lọc — ẩn biểu đồ vì ít thông tin.</div>}
+
       <section className="card" style={{ marginBottom: 14 }} aria-labelledby="todo-h">
         <div className="card-h">
           <h2 id="todo-h">Cần xử lý ưu tiên {actions.length > 0 && <Badge tone={actions.some((a) => a.kind === "overdue") ? "red" : "amber"}>{actions.filter((a) => a.kind === "overdue").length} quá hạn · {actions.length} việc</Badge>}</h2>
@@ -59,9 +62,6 @@ export default function Dashboard() {
         </div>
         {actions.length ? <ActionTable items={actions.slice(0, 8)} onOpen={open} /> : <Empty icon="07-closeout" title="Không có việc quá hạn hoặc sắp đến hạn">theo bộ lọc hiện tại</Empty>}
       </section>
-
-      {rows.length >= 3 ? (mod === "lcnt" ? <LcntCharts rows={pkgRows} /> : <HdCharts rows={hdRows} />) :
-        <div className="note" style={{ marginBottom: 14 }}>Chỉ có {rows.length} hồ sơ trong phạm vi lọc — ẩn biểu đồ vì ít thông tin.</div>}
 
       <section className="card" aria-labelledby="list-h">
         <div className="card-h">

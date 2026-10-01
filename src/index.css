@@ -78,6 +78,14 @@ a { color: var(--brand-d); }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; }
 .tabs button { border: 0; background: none; padding: 10px 14px; cursor: pointer; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; font-size: 14px; }
 .tabs button.on { color: var(--brand-d); border-bottom-color: var(--brand); }
+/* 3 phân hệ ở Tổng quan: nút tròn lớn, đánh số, căn giữa */
+.modtabs { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; margin: 6px 0 18px; }
+.modtabs button { display: inline-flex; align-items: center; gap: 12px; padding: 12px 30px 12px 14px; border-radius: 999px; border: 2px solid var(--border-2); background: var(--surface); color: var(--text); font-size: 19px; font-weight: 700; cursor: pointer; box-shadow: var(--shadow); transition: all .15s; }
+.modtabs button:hover { border-color: var(--brand); color: var(--brand-d); box-shadow: var(--shadow-2); }
+.modtabs button .n { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-d); font-size: 17px; font-weight: 800; border: 2px solid var(--brand); }
+.modtabs button.on { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: 0 8px 22px rgb(238 0 51 / 28%); }
+.modtabs button.on .n { background: #fff; color: var(--brand-d); border-color: #fff; }
+@media (max-width: 900px) { .modtabs button { font-size: 16px; padding: 10px 20px 10px 10px; } }
 
 /* ---------- bộ lọc ---------- */
 .filters { display: grid; row-gap: 6px; grid-template-columns: auto repeat(6, minmax(120px, 1fr)) minmax(140px, 1fr) minmax(180px, 1.4fr) auto; gap: 8px; align-items: end; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; margin-bottom: 14px; box-shadow: var(--shadow); }
