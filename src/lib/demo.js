@@ -1,5 +1,6 @@
 // DỮ LIỆU MINH HỌA — chỉ dùng khi mở ?demo=1. Không bao giờ ghi vào CSDL thật.
 import { addDays, addMonths } from "./dates.js";
+import { isoWeek } from "./tasks.js";
 
 const RONGRAI = [
   ["Tờ trình chủ trương", 0, "chu_truong", true], ["QĐ phê duyệt dự toán (nếu có)", 5, "chu_truong", false],
@@ -117,7 +118,24 @@ export function makeDemo(R) {
     { key: "org_name", value: "Phòng Quản lý hạ tầng - B.QLDAHTVT" }, { key: "due_soon_days", value: 7 }, { key: "due_soon_days_long", value: 14 },
     { key: "contract_expiring_days", value: 30 }, { key: "stale_days", value: 14 }, { key: "payment_module", value: true },
   ];
+  // Nhiệm vụ phòng (minh họa)
+  const task_plans = [{ id: "kh1", docNo: "01/PGNV-QLHT", title: "Phiếu giao nhiệm vụ Quý 04/2026", issuedDate: addDays(R, -10), issuer: "Trưởng phòng", periodFrom: addDays(R, -10), periodTo: addDays(R, 80), status: "active" }];
+  const wk = isoWeek(R);
+  const TK = (id, code, title, st, giao, due, x = {}) => ({ id, code, title, taskType: "Nhiệm vụ được giao", staffId: st, assignedDate: addDays(R, giao), dueDate: due === null ? null : addDays(R, due), originalDue: due === null ? null : addDays(R, due), dueLocked: true, status: "in_progress", percent: 30, updatedAt: now, ...x });
+  const tasks = [
+    TK("t1", "NV26-0001", "Báo cáo TGĐ kết quả củng cố hạ tầng 2024-2026", "d_a", -20, -3, { percent: 60, weekResult: "Đã tổng hợp số liệu 3 năm", nextPlan: "Trình TP ký", difficulty: "Chờ số liệu KV3", sourceDoc: "24369/KL-TH", lastReportWeek: wk }),
+    TK("t2", "NV26-0002", "Rà soát quy trình VHKT.08 sau ban hành", "d_a", -15, 2, { percent: 80, planId: "kh1", taskType: "Phiếu giao nhiệm vụ quý" }),
+    TK("t3", "NV26-0003", "Đào tạo AI cho cán bộ phòng", "d_b", -30, 10, { percent: 50, taskType: "Nhiệm vụ phát sinh", planId: "kh1", lastReportWeek: wk }),
+    TK("t4", "NV26-0004", "Thẩm định thanh toán WO hợp đồng OS", "d_b", -25, -1, { status: "done", percent: 100, completedDate: addDays(R, -2), recurring: true, taskType: "Nhiệm vụ thường xuyên" }),
+    TK("t5", "NV26-0005", "Ký hợp đồng thuê IBS nhà ga T3", "d_c", -40, -12, { percent: 15, status: "waiting", extRequestedDue: addDays(R, 20), extReason: "Chờ VNPT thống nhất giá thuê", extStatus: "pending", taskType: "VO" }),
+    TK("t6", "NV26-0006", "Xây dựng tool thẩm định tờ trình vượt khung", "d_c", -60, null, { percent: 50, taskType: "VO" }),
+    TK("t7", "NV26-0007", "Khảo sát 500 trạm 5G quý 4 (gói thầu)", "d_c", -5, 40, { taskType: "Gói thầu", packageId: "pk4" }),
+    TK("t8", "NV26-0008", "Lập kế hoạch chi phí VHKT 2027", "d_tp", -3, 25, { percent: 10, planId: "kh1", lastReportWeek: wk }),
+  ];
+  const weekly_reports = [{ id: `d_b|${wk}`, staffId: "d_b", week: wk, submittedAt: now, taskCount: 1 }, { id: `d_tp|${wk}`, staffId: "d_tp", week: wk, submittedAt: now, taskCount: 1 }];
+  app_settings.push({ key: "task_soon_days", value: 3 });
   return {
+    task_plans, tasks, task_updates: [], weekly_reports,
     app_settings, holidays: [{ id: "hol1", day: `${R.slice(0, 4)}-09-02`, name: "Quốc khánh" }], staff, workflow_templates, template_milestones, contractors,
     packages, package_milestones, contracts, contract_extensions, contract_amendments, contract_milestones, contract_acceptances, contract_payments, issues,
   };

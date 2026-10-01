@@ -11,6 +11,7 @@ export const TABLES = [
   "app_settings", "holidays", "staff", "workflow_templates", "template_milestones", "contractors",
   "packages", "package_milestones", "contracts", "contract_extensions", "contract_amendments",
   "contract_milestones", "contract_acceptances", "contract_payments", "issues",
+  "task_plans", "tasks", "task_updates", "weekly_reports",
 ];
 
 const camel = (s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());

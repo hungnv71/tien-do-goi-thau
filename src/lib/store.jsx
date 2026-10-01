@@ -3,6 +3,7 @@ import { loadAll, reloadTable, subscribeAll, toApp, api, AppError } from "./supa
 import { todayVN, isISODate } from "./dates.js";
 import { DEFAULT_CFG, buildPackageRows, buildContractRows, buildAlerts, rank } from "./rules.js";
 import { makeDemo, applyDemoOps } from "./demo.js";
+import { buildTaskRows, taskAlerts } from "./tasks.js";
 
 const Ctx = createContext(null);
 export const useApp = () => useContext(Ctx);
@@ -10,7 +11,7 @@ export const useApp = () => useContext(Ctx);
 export const DEMO = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demo");
 const SKEY = DEMO ? "dh_session_demo" : "dh_session";
 const FKEY = "dh_filters_v2";
-export const EMPTY_FILTERS = { scope: "all", staff: "", unit: "", contractor: "", category: "", year: "", status: "", q: "" };
+export const EMPTY_FILTERS = { scope: "all", staff: "", contractor: "", category: "", year: "", status: "", q: "" };
 
 const safeGet = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
 const safeSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch { /* bỏ qua */ } };
@@ -19,12 +20,12 @@ export const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, 
 
 // Trạng thái hợp nhất cho bộ lọc chung
 const STATUS_MAP = {
-  overdue: { p: ["overdue"], c: ["overdue"] },
-  due: { p: ["due_today", "due_soon"], c: ["due_today", "due_soon"] },
-  on_track: { p: ["on_track"], c: ["on_track"] },
-  no_due: { p: ["no_due", "no_milestones"], c: ["no_due", "review"] },
-  done: { p: ["completed"], c: ["done", "done_late", "done_nodate"] },
-  inactive: { p: ["paused", "cancelled"], c: ["cancelled", "terminated"] },
+  overdue: { p: ["overdue"], c: ["overdue"], t: ["overdue"] },
+  due: { p: ["due_today", "due_soon"], c: ["due_today", "due_soon"], t: ["due_today", "due_soon"] },
+  on_track: { p: ["on_track"], c: ["on_track"], t: ["on_track"] },
+  no_due: { p: ["no_due", "no_milestones"], c: ["no_due", "review"], t: ["no_due"] },
+  done: { p: ["completed"], c: ["done", "done_late", "done_nodate"], t: ["done", "done_late", "done_nodate"] },
+  inactive: { p: ["paused", "cancelled"], c: ["cancelled", "terminated"], t: ["cancelled"] },
 };
 export { STATUS_OPTIONS } from "./rules.js";
 
@@ -33,7 +34,11 @@ export function applyFilters(rows, f, meId) {
   return rows.filter((r) => {
     if (f.scope === "mine" && r.staffId !== meId) return false;
     if (f.staff && (f.staff === "__none" ? r.staffId : r.staffId !== f.staff)) return false;
-    if (f.unit && r.unit !== f.unit) return false;
+    if (r.kind === "task") {
+      if (f.status) { const m = STATUS_MAP[f.status]; if (m && !m.t.includes(r.ev.code)) return false; }
+      if (q && !norm([r.code, r.name, r.staffName, r.type, r.rec.sourceDoc, r.rec.collaborators].join(" ")).includes(q)) return false;
+      return true;
+    }
     if (f.category && r.category !== f.category) return false;
     if (f.year && String(r.year) !== String(f.year)) return false;
     if (f.contractor) {
@@ -61,7 +66,7 @@ function settingsToCfg(settings, holidays) {
     orgName: s.org_name || "Phòng Quản lý hạ tầng - B.QLDAHTVT",
     dueSoonDays: n(s.due_soon_days, 7), dueSoonLong: n(s.due_soon_days_long, 14),
     contractSoonDays: n(s.contract_expiring_days, 30), staleDays: n(s.stale_days, 14),
-    paymentModule: s.payment_module !== false,
+    paymentModule: s.payment_module !== false, taskSoonDays: n(s.task_soon_days, 3), appUrl: s.app_url || "",
     holidays: new Set((holidays || []).map((h) => h.day)),
   };
 }
@@ -152,7 +157,14 @@ export function AppProvider({ children }) {
   const allHdRows = useMemo(() => (data ? buildContractRows(data, reportDate, cfg) : []), [data, reportDate, cfg]);
   const pkgRows = useMemo(() => applyFilters(allPkgRows, filters, me?.id), [allPkgRows, filters, me?.id]);
   const hdRows = useMemo(() => applyFilters(allHdRows, filters, me?.id), [allHdRows, filters, me?.id]);
-  const alerts = useMemo(() => buildAlerts(pkgRows, hdRows, reportDate, cfg), [pkgRows, hdRows, reportDate, cfg]);
+  const allTaskRows = useMemo(() => (data ? buildTaskRows(data, allPkgRows, reportDate, cfg) : []), [data, allPkgRows, reportDate, cfg]);
+  const taskRows = useMemo(() => applyFilters(allTaskRows, filters, me?.id), [allTaskRows, filters, me?.id]);
+  const alerts = useMemo(() => {
+    const a = buildAlerts(pkgRows, hdRows, reportDate, cfg), t = taskAlerts(taskRows, reportDate, cfg);
+    const SEV = { overdue: 0, due_today: 1, due_soon: 2 };
+    const action = [...a.action, ...t.action].sort((x, y) => (SEV[x.kind] ?? 4) - (SEV[y.kind] ?? 4) || (x.days ?? 999) - (y.days ?? 999));
+    return { action, data: [...a.data, ...t.data] };
+  }, [pkgRows, hdRows, taskRows, reportDate, cfg]);
 
   const can = useMemo(() => ({
     edit: (ownerId) => rank(role) >= 2 || (rank(role) >= 1 && !!me && ownerId === me.id),
@@ -162,7 +174,7 @@ export function AppProvider({ children }) {
   const value = {
     DEMO, data, status, reload: load, session, setSession, me, role, can, cfg,
     reportDate, setReportDate, today: todayVN(), filters, setFilters, route, go, toast, notify, write,
-    allPkgRows, allHdRows, pkgRows, hdRows, alerts,
+    allPkgRows, allHdRows, pkgRows, hdRows, alerts, allTaskRows, taskRows,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

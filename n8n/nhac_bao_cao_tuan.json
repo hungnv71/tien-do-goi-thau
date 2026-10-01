@@ -1,0 +1,161 @@
+{
+  "name": "P.QLHT - Nhắc cập nhật tiến độ nhiệm vụ hằng tuần",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 14 * * 5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "30 16 * * 5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "30 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "a1",
+      "name": "Lịch: T6 14h, T6 16h30, T2 8h30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Xác định loại thư theo giờ Việt Nam\nconst now = DateTime.now().setZone('Asia/Ho_Chi_Minh');\nlet mode = 'nhac';                          // Thứ Sáu 14:00: nhắc người chưa gửi báo cáo tuần này\nif (now.weekday === 5 && now.hour >= 16) mode = 'nhac_lai';   // Thứ Sáu 16:30: nhắc lại người vẫn chưa gửi\nif (now.weekday === 1) mode = 'tong_hop';   // Thứ Hai 08:30: gửi Trưởng phòng tổng hợp tuần trước\nconst ref = mode === 'tong_hop' ? now.minus({ days: 3 }) : now;\nreturn [{ json: { mode, p_week: ref.toFormat(\"kkkk-'W'WW\") } }];"
+      },
+      "id": "a2",
+      "name": "Xác định tuần",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cajnghfbydkzyrpgoxwq.supabase.co/rest/v1/rpc/app_weekly_digest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNham5naGZieWRrenlycGdveHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3MzI5MTcsImV4cCI6MjEwNjMwODkxN30.DM2Bac8JGyLDwfGU_whnwO3mO7cb2hVSCpak8xMZ7WY"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNham5naGZieWRrenlycGdveHdxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3MzI5MTcsImV4cCI6MjEwNjMwODkxN30.DM2Bac8JGyLDwfGU_whnwO3mO7cb2hVSCpak8xMZ7WY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_key: 'DIEN_KHOA_TONG_HOP_VAO_DAY', p_week: $json.p_week }) }}",
+        "options": {}
+      },
+      "id": "a3",
+      "name": "Lấy tổng hợp tuần (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Soạn danh sách thư từ kết quả app_weekly_digest\nconst d = $input.first().json;\nconst mode = $('Xác định tuần').first().json.mode;\nconst td = 'style=\"padding:4px 8px;border:1px solid #e4e9f1\"';\nconst out = [];\nif (mode !== 'tong_hop') {\n  for (const s of d.staff) {\n    if (!s.email || !s.open || s.submitted) continue;            // chỉ nhắc người còn việc mở và chưa gửi\n    out.push({ json: { to: s.email, subject: (mode === 'nhac_lai' ? '[NHẮC LẠI] ' : '') + s.subject, html: s.html } });\n  }\n} else {\n  const staff = d.staff.filter((s) => s.role !== 'manager');\n  const done = staff.filter((s) => s.submitted).length;\n  const rows = staff.map((s) => `<tr><td ${td}>${s.name}</td><td ${td} align=\"right\">${s.open}</td><td ${td} align=\"right\" style=\"color:#b91c1c\">${s.overdue}</td><td ${td}>${s.submitted ? '<span style=\"color:#15803d\">Đã gửi</span>' : '<b style=\"color:#b45309\">Chưa gửi</b>'}</td></tr>`).join('');\n  const html = `<div style=\"font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#172033\"><p>Kính gửi Trưởng phòng,</p>\n<p>Tổng hợp báo cáo tiến độ nhiệm vụ tuần <b>${d.week}</b>: <b>${done}/${staff.length}</b> cán bộ đã gửi.${d.missing.length ? ' Chưa gửi (còn việc mở): <b>' + d.missing.join(', ') + '</b>.' : ''}</p>\n<table style=\"border-collapse:collapse;font-size:13px\"><tr style=\"background:#172033;color:#fff\"><th ${td}>Cán bộ</th><th ${td}>Việc mở</th><th ${td}>Quá hạn</th><th ${td}>BC tuần</th></tr>${rows}</table>\n<p><a href=\"https://tien-do-goi-thau.vercel.app/#/nhiem-vu?tab=xh\" style=\"color:#ee0033;font-weight:bold\">Mở bảng xếp hạng & thống kê</a></p>\n<p style=\"color:#586579;font-size:12px\">Thư tự động — hệ thống Điều hành gói thầu, hợp đồng & nhiệm vụ.</p></div>`;\n  for (const m of d.staff.filter((s) => s.role === 'manager' && s.email)) out.push({ json: { to: m.email, subject: `[P.QLHT] Tổng hợp báo cáo tuần ${d.week}: ${done}/${staff.length} đã gửi`, html } });\n}\nreturn out;"
+      },
+      "id": "a4",
+      "name": "Soạn danh sách thư",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a5",
+      "name": "Gửi Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        0
+      ],
+      "webhookId": "b0c1d2e3-0000-4000-8000-0000000000a1"
+    }
+  ],
+  "connections": {
+    "Lịch: T6 14h, T6 16h30, T2 8h30": {
+      "main": [
+        [
+          {
+            "node": "Xác định tuần",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xác định tuần": {
+      "main": [
+        [
+          {
+            "node": "Lấy tổng hợp tuần (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lấy tổng hợp tuần (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "Soạn danh sách thư",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Soạn danh sách thư": {
+      "main": [
+        [
+          {
+            "node": "Gửi Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "active": false
+}

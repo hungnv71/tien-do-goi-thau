@@ -188,3 +188,60 @@ test("Migration 03 khóa ghi trực tiếp; 03b mở lại", async () => {
   const pol2 = await db.query("select cmd from pg_policies where tablename='packages' order by cmd");
   assert.ok(pol2.rows.some((x) => x.cmd === "ALL"));
 });
+
+test("Module nhiệm vụ: migration 04 + 05 (76 NV), cán bộ thật, TP thainn2", async () => {
+  await db.exec(sql("supabase/04_nhiem_vu_phong.sql"));
+  const has05 = (() => { try { return sql("supabase/05_import_nhiem_vu_tuan40.sql"); } catch { return null; } })();
+  if (has05) { await db.exec(has05); await db.exec(has05); }       // chạy 2 lần: không nhân đôi
+  await db.exec(sql("supabase/04_nhiem_vu_phong.sql"));
+  if (has05) {
+    const c = await one(db, "select count(*)::int n, count(*) filter (where staff_id is null)::int nul, count(*) filter (where package_id='pk_demo2')::int pk from tasks");
+    assert.deepEqual([c.n, c.nul, c.pk], [76, 0, 1]);
+    assert.equal((await one(db, "select count(*)::int n from weekly_reports")).n, 5);
+    assert.equal((await one(db, "select full_name from staff where account='hungnv71'")).full_name, "Nguyễn Việt Hùng");
+    assert.equal((await one(db, "select role from staff where account='thainn2'")).role, "manager");
+    assert.equal((await one(db, "select count(*)::int n from staff where lower(account)='hungnt16'")).n, 1);
+  }
+});
+
+test("Nhiệm vụ: hạn khóa cứng, đề nghị gia hạn, TP duyệt; nhật ký tuần không sửa được", async () => {
+  const tokA = (await rpc(db, "app_setup_pin", ["st_tucna", "2468"])).token;
+  const tokTP = (await rpc(db, "app_setup_pin", ["st_thainn2", "1357"])).token;
+  await write(db, tokA, [{ table: "tasks", op: "insert", id: "t1", data: { title: "Việc phát sinh", staff_id: "st_tucna", due_date: "2026-10-10", original_due: "2026-10-10" } }]);
+  await rejects(write(db, tokA, [{ table: "tasks", op: "insert", id: "t2", data: { title: "Giao người khác", staff_id: "st_dangnt2" } }]), /PERM/);
+  await rejects(write(db, tokA, [{ table: "tasks", op: "update", id: "t1", data: { due_date: "2026-10-20" }, reason: "x" }]), /Hạn nhiệm vụ đã khóa/);
+  await rejects(write(db, tokA, [{ table: "tasks", op: "update", id: "t1", data: { due_locked: false } }]), /mở khóa hạn/);
+  await write(db, tokA, [{ table: "tasks", op: "update", id: "t1", data: { ext_requested_due: "2026-10-20", ext_reason: "Chờ số liệu", ext_status: "pending" } }]);
+  await rejects(write(db, tokA, [{ table: "tasks", op: "update", id: "t1", data: { ext_status: "approved" } }]), /Chỉ lãnh đạo được duyệt/);
+  await rejects(write(db, tokTP, [{ table: "tasks", op: "update", id: "t1", data: { due_date: "2026-10-20", ext_status: "approved" } }]), /Cần nhập lý do/);
+  await write(db, tokTP, [{ table: "tasks", op: "update", id: "t1", data: { due_date: "2026-10-20", ext_status: "approved" }, reason: "Duyệt gia hạn: Chờ số liệu" }]);
+  const t = await one(db, "select due_date::text d, original_due::text o from tasks where id='t1'");
+  assert.deepEqual([t.d, t.o], ["2026-10-20", "2026-10-10"]);
+  // cập nhật tuần: % + nhật ký + đánh dấu đã báo cáo
+  await write(db, tokA, [
+    { table: "tasks", op: "update", id: "t1", data: { percent: 50, week_result: "Xong bước 1", last_report_week: "2026-W40" } },
+    { table: "task_updates", op: "insert", id: "u1", data: { task_id: "t1", staff_id: "st_tucna", week: "2026-W40", percent: 50 } },
+    { table: "weekly_reports", op: "insert", id: "st_tucna|2026-W40", data: { staff_id: "st_tucna", week: "2026-W40", task_count: 1 } },
+  ]);
+  await rejects(write(db, tokA, [{ table: "task_updates", op: "update", id: "u1", data: { percent: 90 } }]), /không được sửa/);
+  await rejects(write(db, tokA, [{ table: "tasks", op: "delete", id: "t1" }]), /Chỉ lãnh đạo được xóa/);
+  await rejects(write(db, tokA, [{ table: "task_plans", op: "insert", id: "kh1", data: { title: "KH" } }]), /lãnh đạo phòng/);
+  await write(db, tokTP, [{ table: "task_plans", op: "insert", id: "kh1", data: { title: "KH tháng 10", doc_no: "01/KH-QLHT" } }]);
+});
+
+test("Tổng hợp tuần cho n8n: sai khóa bị chặn, đúng khóa trả danh sách + HTML", async () => {
+  await rejects(rpc(db, "app_weekly_digest", ["sai"]), /Sai khóa/);
+  const key = (await one(db, "select value from app_secrets where key='digest_key'")).value;
+  const r = await rpc(db, "app_weekly_digest", [key]);
+  assert.ok(r.week.startsWith("20"));
+  const a = r.staff.find((s) => s.staff_id === "st_tucna");
+  assert.ok(a.open >= 1 && a.html.includes("Cập nhật tuần") && a.subject.includes("[P.QLHT]"));
+  const w40 = await rpc(db, "app_weekly_digest", [key, "2026-W40"]);
+  assert.equal(w40.week, "2026-W40");
+  assert.equal(w40.staff.find((s) => s.staff_id === "st_bichngoc").submitted, true, "tuần 40 Bích Ngọc đã gửi");
+  assert.ok(w40.missing.includes("Trân Văn Doanh"));
+  await rejects(rpc(db, "app_weekly_digest", [key, "W40<script>"]), /không hợp lệ/);
+  await db.exec("grant select on all tables in schema public to anon; set role anon");   // như Supabase: anon có quyền bảng, RLS chặn dòng
+  assert.equal((await db.query("select count(*)::int n from app_secrets")).rows[0].n, 0, "anon không đọc được khóa");
+  await db.exec("reset role");
+});

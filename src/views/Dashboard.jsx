@@ -2,36 +2,39 @@ import { useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LabelList } from "recharts";
 import { Download, ChevronRight } from "lucide-react";
 import { useApp } from "../lib/store.jsx";
-import { LCNT_KPI, HD_KPI, computeKpis, PKG_STATUS, HD_PROGRESS, STAGES, EXEC_STATUS, daysText, ALERT_LABEL } from "../lib/rules.js";
+import { LCNT_KPI, HD_KPI, computeKpis, PKG_STATUS, HD_PROGRESS, STAGES, EXEC_STATUS, daysText, ALERT_LABEL, MODULE_LABEL, MODULE_PAGE } from "../lib/rules.js";
 import { fmtDate } from "../lib/dates.js";
 import { Banner, Btn, Icon3D, Badge, fmtD, ty, Empty, InfoTip, Progress } from "../components/ui.jsx";
 import FilterBar, { PastDateNote } from "../components/FilterBar.jsx";
-import { exportWorkbook } from "../lib/excel.js";
+import { exportWorkbook, exportTasksWorkbook } from "../lib/excel.js";
+import { TaskOverview } from "./Tasks.jsx";
 
 export const kpiLabel = (k, cfg) => k.label.replace("N ngày", `${k.key === "hd_expiring" ? cfg.contractSoonDays : cfg.dueSoonDays} ngày`);
 export const tone = (kind) => ({ overdue: "red", due_today: "amber", due_soon: "amber", pending_ext: "blue", review: "amber", await_liq: "gray", guarantee_soon: "amber", issue_overdue: "red" }[kind] || "gray");
 
 export default function Dashboard() {
-  const { route, go, pkgRows, hdRows, alerts, cfg, reportDate, filters, me, data } = useApp();
-  const mod = route.params.m === "hd" ? "hd" : "lcnt";
+  const { route, go, pkgRows, hdRows, alerts, cfg, reportDate, filters, me, data, taskRows } = useApp();
+  const mod = route.params.m === "hd" ? "hd" : route.params.m === "nv" ? "nv" : "lcnt";
   const rows = mod === "hd" ? hdRows : pkgRows;
   const ctx = { reportDate, cfg };
-  const kpis = useMemo(() => computeKpis(mod === "hd" ? HD_KPI : LCNT_KPI, rows, ctx), [rows, mod, reportDate, cfg]); // eslint-disable-line
+  const kpis = useMemo(() => (mod === "nv" ? [] : computeKpis(mod === "hd" ? HD_KPI : LCNT_KPI, rows, ctx)), [rows, mod, reportDate, cfg]); // eslint-disable-line
   const scopeText = filters.scope === "mine" ? `Của tôi (${me?.fullName || ""})` : "Toàn phòng";
   const actions = alerts.action.filter((a) => a.module === mod);
-  const open = (a) => go(a.module === "hd" ? "hop-dong" : "lcnt", { open: a.recordId });
+  const open = (a) => go(MODULE_PAGE[a.module], { open: a.recordId });
 
   return (
     <>
-      <Banner icon="06-progress" title="Điều hành gói thầu & hợp đồng" sub={<>{cfg.orgName} · Ngày dữ liệu: <b>{fmtDate(reportDate)}</b></>}>
-        <Btn kind="ghost" icon={Download} onClick={() => exportWorkbook({ data, pkgRows: mod === "lcnt" ? pkgRows : [], hdRows: mod === "hd" ? hdRows : [], alerts, reportDate, cfg, filters, me })}>Xuất Excel</Btn>
+      <Banner icon="06-progress" title="Điều hành gói thầu, hợp đồng & nhiệm vụ" sub={<>{cfg.orgName} · Ngày dữ liệu: <b>{fmtDate(reportDate)}</b></>}>
+        <Btn kind="ghost" icon={Download} onClick={() => (mod === "nv" ? exportTasksWorkbook({ data, rows: taskRows, reportDate, cfg, filters, me }) : exportWorkbook({ data, pkgRows: mod === "lcnt" ? pkgRows : [], hdRows: mod === "hd" ? hdRows : [], alerts, reportDate, cfg, filters, me }))}>Xuất Excel</Btn>
       </Banner>
       <div className="tabs" role="tablist" aria-label="Phân hệ">
         <button role="tab" aria-selected={mod === "lcnt"} className={mod === "lcnt" ? "on" : ""} onClick={() => go("dashboard", { m: "lcnt" })}>Lựa chọn nhà thầu</button>
         <button role="tab" aria-selected={mod === "hd"} className={mod === "hd" ? "on" : ""} onClick={() => go("dashboard", { m: "hd" })}>Hợp đồng đã ký</button>
+        <button role="tab" aria-selected={mod === "nv"} className={mod === "nv" ? "on" : ""} onClick={() => go("dashboard", { m: "nv" })}>Nhiệm vụ phòng</button>
       </div>
-      <FilterBar showContractor={mod === "hd"} />
+      <FilterBar showContractor={mod === "hd"} tasksOnly={mod === "nv"} />
       <PastDateNote />
+      {mod === "nv" ? <TaskOverview /> : <>
 
       <section className="kpis" aria-label="Chỉ tiêu tổng quan">
         {kpis.map((k) => (
@@ -67,6 +70,7 @@ export default function Dashboard() {
         </div>
         {mod === "lcnt" ? <TopPackages rows={pkgRows} onOpen={(id) => go("lcnt", { open: id })} /> : <TopContracts rows={hdRows} onOpen={(id) => go("hop-dong", { open: id })} />}
       </section>
+      </>}
     </>
   );
 }
@@ -82,7 +86,7 @@ export function ActionTable({ items, onOpen, showModule }) {
           {items.map((a, i) => (
             <tr key={a.recordId + a.kind + i} className={a.kind === "overdue" ? "hl" : ""}>
               <td style={{ minWidth: 200, maxWidth: 320 }}><div className="code b">{a.code}</div><div className="small mut wrap2">{a.title}</div></td>
-              {showModule && <td className="small">{a.module === "hd" ? "Hợp đồng" : "LCNT"}</td>}
+              {showModule && <td className="small">{MODULE_LABEL[a.module] || a.module}</td>}
               <td style={{ maxWidth: 240 }}>{a.task}{a.paused && <div><Badge tone="gray">Đang tạm dừng</Badge></div>}</td>
               <td className="nowrap">{a.staffName}</td>
               <td className={`nowrap num ${a.days < 0 ? "tone-red b" : ""}`}>{fmtD(a.due)}</td>
@@ -110,7 +114,7 @@ function byStaff(rows, codeOf) {
   }
   return [...m.values()].sort((a, b) => b.overdue + b.due - (a.overdue + a.due));
 }
-function StaffChart({ data, unit }) {
+export function StaffChart({ data, unit }) {
   const h = Math.max(160, data.length * 34 + 60);
   return (
     <div style={{ height: h }} role="img" aria-label={`Biểu đồ số ${unit} theo cán bộ và trạng thái`}>
@@ -129,7 +133,7 @@ function StaffChart({ data, unit }) {
     </div>
   );
 }
-function SimpleBars({ data, unit, color = "#2563eb", label }) {
+export function SimpleBars({ data, unit, color = "#2563eb", label }) {
   return (
     <div style={{ height: Math.max(180, data.length * 30 + 40) }} role="img" aria-label={label}>
       <ResponsiveContainer>

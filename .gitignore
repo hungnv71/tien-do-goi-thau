@@ -12,3 +12,7 @@ supabase/02_import_hd_2024_2026.sql
 # Tài nguyên thiết kế gốc (PNG 1 MB/ảnh); web chỉ dùng bản WebP trong public/assets/icons
 Bo_icon_3D_va_prompt_web_goi_thau_hop_dong/
 Web minh họa gói thầu.png
+
+# Có khóa bí mật — không đưa lên GitHub
+n8n/*_CO_KHOA.json
+supabase/05_import_nhiem_vu_tuan40.sql

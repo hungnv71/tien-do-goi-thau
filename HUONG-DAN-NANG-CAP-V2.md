@@ -2,6 +2,24 @@
 
 Phòng Quản lý hạ tầng - B.QLDAHTVT · ngày bàn giao 30/09/2026 · **chưa triển khai production**
 
+## 00. Bổ sung 01/10/2026 — MODULE NHIỆM VỤ PHÒNG
+
+**CSDL (đã chạy trên `cajnghfbydkzyrpgoxwq`):** `04_nhiem_vu_phong.sql` (bảng task_plans, tasks, task_updates, weekly_reports, quyền, hàm `app_weekly_digest`), `05_import_nhiem_vu_tuan40.sql` (76 nhiệm vụ từ BC_TienDo_PhongQLHT_Tuan40_2026 + TP thainn2 + 5 báo cáo tuần đã gửi; file có dữ liệu thật nên không đưa lên GitHub), `06_ke_hoach_quy3.sql` (KH "Phiếu giao nhiệm vụ Quý 03/2026", gắn 2 NV), migration `v2_07` (digest nhận thêm tham số tuần).
+
+**Giao diện:** menu mới **Nhiệm vụ phòng** (4 tab: Danh sách · Cập nhật tuần · Xếp hạng & thống kê · Kế hoạch phòng); tab **Nhiệm vụ phòng** ở Tổng quan; nhiệm vụ đưa vào Cảnh báo (phân hệ "Nhiệm vụ") và Việc của tôi; nhắc "chưa gửi báo cáo tuần" ở đầu trang; Xuất Excel đúng mẫu BC tuần (DASHBOARD, ChiTiet_ToanPhong, CanhBao_QuaHan, thống kê tháng). Đã bỏ ô lọc "Đơn vị".
+
+**Quy tắc chính**
+- Hạn nhiệm vụ khóa cứng (kiểm tra trên máy chủ): cán bộ chỉ gửi *đề nghị gia hạn*; lãnh đạo duyệt → đổi hạn hiện hành, hạn giao ban đầu giữ nguyên. Lãnh đạo có thể mở/khóa hạn (bắt buộc ghi lý do).
+- Gói thầu: nhiệm vụ gắn gói lấy % và kết quả tự động từ mốc LCNT; gói đang tổ chức chưa gắn nhiệm vụ hiện thành dòng "Gói thầu (tự động)" — không nhập lại.
+- Xếp hạng theo **số việc tồn** = nhiệm vụ chưa xong + gói thầu đang tổ chức; có quá hạn, sắp đến hạn (≤3 ngày, cấu hình `task_soon_days`), hoàn thành trong tháng, đã/chưa gửi BC tuần.
+- Thống kê người × tháng: Giao mới / Đến hạn / Hoàn thành. NV cũ nhập từ file chưa có ngày hoàn thành được ghi chú riêng, không tự gán ngày.
+- Cập nhật tuần: 1 màn hình, chỉ sửa dòng có thay đổi, nút %, "Đúng như KH tuần trước", bấm 1 lần gửi → ghi nhật ký `task_updates` (không sửa/xóa được) + đánh dấu `weekly_reports`.
+
+**Tài khoản TP:** `thainn2` — chưa có PIN; lần đầu đăng nhập chọn tên "Thái (Trưởng phòng)" và tự đặt PIN.
+
+**Nhắc tự động (n8n):** import `n8n/nhac_bao_cao_tuan_CO_KHOA.json` (đã có khóa, *không* đưa lên GitHub; bản `nhac_bao_cao_tuan.json` để khóa trống) → gắn credential Gmail ở node "Gửi Gmail" → Activate. Lịch (giờ VN): **T6 14:00** nhắc người còn việc mở mà chưa gửi BC tuần; **T6 16:30** nhắc lại; **T2 08:30** gửi TP bảng tổng hợp tuần trước. Khóa lưu ở bảng `app_secrets` (API không đọc được); đổi khóa: `update app_secrets set value = encode(gen_random_bytes(16),'hex') where key='digest_key';` rồi sửa node HTTP.
+Cán bộ chưa có email trên hệ thống (sẽ không nhận mail): Nguyễn Thị Bích Ngọc, Hoàng Lê Hải — bổ sung ở Quản trị → Cán bộ.
+
 ## 0. Trạng thái triển khai (30/09/2026)
 
 - CSDL mới: Supabase project **dieu-hanh-goi-thau-hop-dong** (`cajnghfbydkzyrpgoxwq`, tổ chức HUNGNV71 — tài khoản GitHub cá nhân). Đã chạy đủ schema v1 + dữ liệu cũ (5 cán bộ, 3 bộ mốc, 3 gói, 51 mốc) + migration 01 + 80 HĐ; bảng cũ đã khóa ghi trực tiếp ngay từ đầu (tương đương 03).

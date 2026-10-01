@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
 import {
-  LayoutDashboard, FileSearch, FileSignature, ClipboardList, Bell, BarChart3, ListChecks, Building2, ShieldCheck, Settings, LogOut, KeyRound,
+  LayoutDashboard, FileSearch, FileSignature, ClipboardList, Bell, BarChart3, ListChecks, Building2, ShieldCheck, Settings, LogOut, KeyRound, ListTodo,
 } from "lucide-react";
 import { AppProvider, useApp, DEMO } from "./lib/store.jsx";
 import { api } from "./lib/supabase.js";
-import { ROLE, staffLabel } from "./lib/rules.js";
+import { ROLE, staffLabel, rank } from "./lib/rules.js";
 import { Btn, Field, Inp, Sel, Modal, Toast, ReasonHost, Loading, ErrorBox, Icon3D, NoPerm } from "./components/ui.jsx";
 import Dashboard from "./views/Dashboard.jsx";
 import Tenders from "./views/Tenders.jsx";
@@ -12,6 +12,7 @@ import Contracts from "./views/Contracts.jsx";
 import MyWork from "./views/MyWork.jsx";
 import Alerts from "./views/Alerts.jsx";
 import Reports from "./views/Reports.jsx";
+import Tasks, { WeekReminder } from "./views/Tasks.jsx";
 import { AdminTemplates, AdminContractors, AdminStaff, AdminSettings } from "./views/Admin.jsx";
 
 export default function App() {
@@ -22,6 +23,7 @@ const NAV = [
   { id: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
   { id: "lcnt", label: "Lựa chọn nhà thầu", icon: FileSearch },
   { id: "hop-dong", label: "Hợp đồng đã ký", icon: FileSignature },
+  { id: "nhiem-vu", label: "Nhiệm vụ phòng", icon: ListTodo, count: "tasks" },
   { id: "viec-cua-toi", label: "Việc của tôi", icon: ClipboardList, count: "mine" },
   { id: "canh-bao", label: "Cảnh báo", icon: Bell, count: "alerts" },
   { id: "bao-cao", label: "Báo cáo", icon: BarChart3 },
@@ -36,6 +38,7 @@ const ADMIN = [
 function Shell() {
   const { status, reload, data, me, session, route, go, alerts, cfg, setSession, role } = useApp();
   const [pinOpen, setPinOpen] = useState(false);
+  const taskCount = useMemo(() => (me ? alerts.action.filter((a) => a.module === "nv" && a.kind === "overdue" && (rank(role) >= 2 || a.staffId === me.id)).length : 0), [alerts, me, role]);
   const myCount = useMemo(() => (me ? alerts.action.filter((a) => a.staffId === me.id && ["overdue", "due_today", "due_soon"].includes(a.kind)).length : 0), [alerts, me]);
 
   if (status.state === "loading" && !data) return <div className="center-page"><Loading /></div>;
@@ -52,10 +55,10 @@ function Shell() {
   return (
     <div className="app">
       <aside className="side" aria-label="Điều hướng">
-        <div className="brand"><div className="brand-mark" aria-hidden>ĐH</div><div><b>Điều hành gói thầu<br />& hợp đồng</b><span>{cfg.orgName}</span></div></div>
+        <div className="brand"><div className="brand-mark" aria-hidden>ĐH</div><div><b>Điều hành gói thầu,<br />hợp đồng & nhiệm vụ</b><span>{cfg.orgName}</span></div></div>
         <nav className="nav">
           {NAV.map((n) => {
-            const c = n.count === "alerts" ? alerts.action.filter((a) => ["overdue", "due_today"].includes(a.kind)).length : n.count === "mine" ? myCount : 0;
+            const c = n.count === "tasks" ? taskCount : n.count === "alerts" ? alerts.action.filter((a) => ["overdue", "due_today"].includes(a.kind)).length : n.count === "mine" ? myCount : 0;
             return (
               <button key={n.id} className={page === n.id ? "on" : ""} aria-current={page === n.id ? "page" : undefined} onClick={() => go(n.id)}>
                 <n.icon size={18} aria-hidden /> {n.label}{c > 0 && <span className="cnt" aria-label={`${c} việc cần xử lý`}>{c}</span>}
@@ -81,7 +84,9 @@ function Shell() {
       </aside>
       <main className="main" id="main">
         {DEMO && <div className="demo-flag" style={{ marginBottom: 10 }}>DỮ LIỆU MINH HỌA — chỉ để xem thử giao diện, mọi thay đổi chỉ nằm trong trình duyệt, không ghi vào dữ liệu thật.</div>}
+        <WeekReminder />
         {page === "dashboard" && <Dashboard />}
+        {page === "nhiem-vu" && <Tasks />}
         {page === "lcnt" && <Tenders />}
         {page === "hop-dong" && <Contracts />}
         {page === "viec-cua-toi" && <MyWork />}

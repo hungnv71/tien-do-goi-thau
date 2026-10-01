@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/rules.test.mjs",
+    "test": "node --test tests/rules.test.mjs tests/tasks.test.mjs",
     "test:db": "node --test tests/db/migration.test.mjs",
     "test:excel": "node --test tests/excel.test.mjs",
     "gen:import": "python tools/gen_import_sql.py"

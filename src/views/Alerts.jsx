@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { useApp } from "../lib/store.jsx";
-import { ALERT_LABEL, staffLabel } from "../lib/rules.js";
+import { ALERT_LABEL, staffLabel, MODULE_PAGE } from "../lib/rules.js";
 import { addDays, weekday, fmtDate } from "../lib/dates.js";
 import { Banner, Btn, Badge, Sel, Empty, DataTable, fmtD } from "../components/ui.jsx";
 import FilterBar, { PastDateNote } from "../components/FilterBar.jsx";
@@ -25,7 +25,7 @@ export default function Alerts() {
   const issues = useMemo(() => data.issues.filter((i) => i.status !== "resolved" && ids.has(i.entityId)), [data.issues, pkgRows, hdRows]); // eslint-disable-line
   const waitOpts = [...new Set(issues.map((i) => i.waitingOn).filter(Boolean))];
   const issueRows = issues.filter((i) => !waiting || i.waitingOn === waiting);
-  const open = (a) => go(a.module === "hd" ? "hop-dong" : "lcnt", { open: a.recordId });
+  const open = (a) => go(MODULE_PAGE[a.module], { open: a.recordId });
   const kinds = [...new Set((tab === "data" ? alerts.data : alerts.action).map((a) => a.kind))];
   const recName = (i) => { const r = [...pkgRows, ...hdRows].find((x) => x.id === i.entityId); return r ? `${r.no || r.code || ""} ${r.name}` : i.entityId; };
   const TABS = [["action", "Việc cần xử lý", action.length], ["week", "Tuần này", week.length], ["issues", "Vướng mắc · chờ ai xử lý", issues.length], ["sign", "Hồ sơ chờ ký", awaitSign.length], ["guar", "Bảo lãnh / bảo hành", guarantee.length], ["data", "Cảnh báo dữ liệu", dataAl.length]];
@@ -38,7 +38,7 @@ export default function Alerts() {
       <PastDateNote />
       <div className="tabs" role="tablist">{TABS.map(([k, l, n]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => { setTab(k); setKind(""); }}>{l} ({n})</button>)}</div>
       <div className="row" style={{ marginBottom: 10 }}>
-        <label className="row small">Phân hệ <Sel style={{ width: 180 }} value={mod} onChange={(e) => setMod(e.target.value)}><option value="">Cả hai</option><option value="lcnt">Lựa chọn nhà thầu</option><option value="hd">Hợp đồng</option></Sel></label>
+        <label className="row small">Phân hệ <Sel style={{ width: 180 }} value={mod} onChange={(e) => setMod(e.target.value)}><option value="">Tất cả</option><option value="lcnt">Lựa chọn nhà thầu</option><option value="hd">Hợp đồng</option><option value="nv">Nhiệm vụ phòng</option></Sel></label>
         {(tab === "action" || tab === "data") && <label className="row small">Loại <Sel style={{ width: 220 }} value={kind} onChange={(e) => setKind(e.target.value)}><option value="">Tất cả</option>{kinds.map((k) => <option key={k} value={k}>{ALERT_LABEL[k]}</option>)}</Sel></label>}
         {tab === "issues" && <label className="row small">Chờ ai xử lý <Sel style={{ width: 220 }} value={waiting} onChange={(e) => setWaiting(e.target.value)}><option value="">Tất cả</option>{waitOpts.map((w) => <option key={w}>{w}</option>)}</Sel></label>}
       </div>

@@ -3,6 +3,7 @@
 const loadExcelJS = () => import("exceljs").then((m) => m.default || m);
 const loadXLSX = () => import("xlsx");
 import { fmtDate, parseDateCell } from "./dates.js";
+import * as T from "./tasks.js";
 import { PKG_STATUS, HD_PROGRESS, EXEC_STATUS, ACC_STATUS, LIQ_STATUS, PAY_OWNER, EXT_STATUS, ALERT_LABEL, LCNT_KPI, HD_KPI, computeKpis, daysText, staffLabel, byPos, STATUS_OPTIONS } from "./rules.js";
 
 const RED = "FFEE0033", DARK = "FF172033", ZEBRA = "FFF6F8FC";
@@ -41,10 +42,9 @@ function sheet(wb, name, title, sub, cols, rows, opt = {}) {
   return ws;
 }
 
-function filterText(f, data, me) {
+export function filterText(f, data, me) {
   const parts = [f.scope === "mine" ? `Của tôi (${staffLabel(me)})` : "Toàn phòng"];
   if (f.staff) parts.push("Cán bộ: " + (f.staff === "__none" ? "Chưa phân công" : staffLabel(data.staff.find((s) => s.id === f.staff))));
-  if (f.unit) parts.push("Đơn vị: " + f.unit);
   if (f.contractor) parts.push("Nhà thầu: " + (data.contractors.find((c) => c.id === f.contractor)?.name || f.contractor));
   if (f.category) parts.push("Nhóm: " + f.category);
   if (f.year) parts.push("Năm: " + f.year);
@@ -267,4 +267,91 @@ export async function parsePackages(file, data) {
         packageValue: Number.isNaN(value) ? null : value, policyApprovedDate: policy || null, targetSignDate: target || null, unit, currency: "VND", status: "active" } });
   }
   return { items };
+}
+
+// ============================================================ XUẤT EXCEL NHIỆM VỤ PHÒNG (theo mẫu BC_TienDo_PhongQLHT)
+export async function exportTasksWorkbook({ data, rows, reportDate, cfg, filters, me }) {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = cfg.orgName;
+  const week = T.isoWeek(reportDate);
+  const sub = `${cfg.orgName} · Kỳ báo cáo: ${T.weekLabel(week)} · Ngày tổng hợp: ${fmtDate(reportDate)} · Bộ lọc: ${filterText(filters, data, me)}`;
+  const real = rows.filter((r) => !r.virtual);
+  const open = real.filter((r) => T.OPEN(r.ev.code));
+  const ranking = T.staffRanking(rows, data, reportDate);
+  const warn = (r) => (r.ev.code === "overdue" ? `QUÁ HẠN ${r.ev.lateDays} ngày` : r.ev.code === "due_today" ? "ĐẾN HẠN HÔM NAY" : r.ev.code === "due_soon" ? `Còn ${r.ev.daysLeft} ngày` : T.TASK_STATE[r.ev.code]?.label || "");
+
+  // DASHBOARD
+  const ws = wb.addWorksheet("DASHBOARD");
+  ws.columns = [{ width: 6 }, { width: 34 }, { width: 12 }, { width: 10 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 10 }, { width: 12 }, { width: 14 }, { width: 14 }];
+  ws.addRow(["BAN QLDA HẠ TẦNG VIỄN THÔNG"]).font = { bold: true };
+  ws.addRow([cfg.orgName.toUpperCase()]).font = { bold: true };
+  ws.addRow([]);
+  const t1 = ws.addRow(["BÁO CÁO TỔNG HỢP TIẾN ĐỘ NHIỆM VỤ"]); t1.font = { bold: true, size: 14, color: { argb: RED } };
+  ws.addRow([T.weekLabel(week)]).font = { italic: true };
+  ws.addRow([`Ngày tổng hợp: ${fmtDate(reportDate)} · Số CBNV đã báo cáo tuần: ${ranking.filter((x) => x.reported).length}/${ranking.length}`]);
+  ws.addRow([]);
+  const hd = (cells) => { const r = ws.addRow(cells); r.eachCell((c) => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } }; c.border = border; c.alignment = { wrapText: true, vertical: "middle", horizontal: "center" }; }); r.height = 30; };
+  const bodyRow = (cells, bold) => { const r = ws.addRow(cells); r.eachCell({ includeEmpty: true }, (c) => { c.border = border; if (bold) c.font = { bold: true }; }); return r; };
+  ws.addRow(["I. CHỈ TIÊU CHUNG TOÀN PHÒNG"]).font = { bold: true };
+  hd(["TT", "Chỉ tiêu", "Giá trị", "Ghi chú / cách tính"]);
+  const cnt = (f) => real.filter(f).length;
+  const pcts = real.map((r) => r.percent).filter((v) => v != null);
+  [
+    ["Tổng số nhiệm vụ", real.length, "Không gồm gói thầu tự động"],
+    ...T.TASK_TYPES.filter((t) => t !== "Gói thầu").map((t) => [`  ${t}`, cnt((r) => r.type === t), "Theo loại nhiệm vụ"]),
+    ["Đã hoàn thành", cnt((r) => T.DONE(r.ev.code)), "Trạng thái Hoàn thành"],
+    ["Đang thực hiện", cnt((r) => r.ev.status === "in_progress" && T.OPEN(r.ev.code)), ""],
+    ["Chưa bắt đầu", cnt((r) => r.ev.status === "not_started" && T.OPEN(r.ev.code)), ""],
+    ["Chờ ý kiến / phối hợp", cnt((r) => r.ev.status === "waiting" && T.OPEN(r.ev.code)), ""],
+    ["Nhiệm vụ QUÁ HẠN", cnt((r) => r.ev.code === "overdue"), "Chưa hoàn thành và ngày tổng hợp > hạn hiện hành"],
+    [`Sắp đến hạn (≤ ${cfg.taskSoonDays} ngày)`, cnt((r) => ["due_today", "due_soon"].includes(r.ev.code)), "Cảnh báo sớm"],
+    ["Chờ duyệt gia hạn", cnt((r) => r.ev.pendingExt && T.OPEN(r.ev.code)), ""],
+    ["Gói thầu đang tổ chức (tự liên kết LCNT)", rows.filter((r) => r.virtual && T.OPEN(r.ev.code)).length, "Lấy từ phân hệ Lựa chọn nhà thầu"],
+    ["Tỷ lệ hoàn thành (%)", real.length ? Math.round((cnt((r) => T.DONE(r.ev.code)) / real.length) * 1000) / 10 : 0, "Đã hoàn thành / Tổng nhiệm vụ"],
+    ["Tiến độ bình quân (%)", pcts.length ? Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 10) / 10 : 0, "Bình quân % hoàn thành"],
+  ].forEach((x, i) => bodyRow([i + 1, ...x]));
+  ws.addRow([]);
+  ws.addRow(["II. TIẾN ĐỘ THEO TỪNG CBNV (xếp theo số việc tồn)"]).font = { bold: true };
+  hd(["Hạng", "Họ và tên", "Tổng NV", "Tồn", "Quá hạn", "Sắp đến hạn", "Gói thầu đang TC", "HT trong tháng", "Tiến độ BQ (%)", "BC tuần này", "BC gần nhất"]);
+  ranking.forEach((x) => { const r = bodyRow([x.rank, x.name, x.total, x.backlog, x.overdue, x.dueSoon, x.pkgOpen, x.doneMonth, x.avgPct ?? "", x.reported ? "Đã gửi" : "Chưa gửi", x.lastReport || "Chưa có"]); if (x.overdue) r.getCell(5).font = { bold: true, color: { argb: "FFB91C1C" } }; if (!x.reported) r.getCell(10).font = { color: { argb: "FFB45309" } }; });
+  bodyRow(["", "TỔNG CỘNG", ...[2, 3, 4, 5, 6, 7].map((k) => ranking.reduce((a, x) => a + [x.total, x.backlog, x.overdue, x.dueSoon, x.pkgOpen, x.doneMonth][k - 2], 0)), "", "", ""], true);
+
+  // CHI TIẾT
+  const list = [...rows].sort((a, b) => a.staffName.localeCompare(b.staffName, "vi") || String(a.ev.due || "9").localeCompare(String(b.ev.due || "9"))).map((r, i) => ({ ...r, stt: i + 1 }));
+  sheet(wb, "ChiTiet_ToanPhong", "TỔNG HỢP CHI TIẾT NHIỆM VỤ - PHÒNG", sub, [
+    { h: "STT", w: 5, num: true, v: (r) => r.stt }, { h: "Người thực hiện", w: 20, v: (r) => r.staffName }, { h: "Tài khoản", w: 14, v: (r) => r.staff?.account },
+    { h: "Mã NV", w: 11, v: (r) => r.code }, { h: "Loại nhiệm vụ", w: 16, v: (r) => r.type }, { h: "Tên nhiệm vụ / Nội dung công việc", w: 50, v: (r) => r.name },
+    { h: "Văn bản giao", w: 18, v: (r) => r.rec.sourceDoc }, { h: "Ngày giao", w: 11, v: (r) => fmtDate(r.rec.assignedDate) }, { h: "Hạn hoàn thành", w: 11, v: (r) => fmtDate(r.ev.due) },
+    { h: "Hạn giao ban đầu", w: 11, v: (r) => fmtDate(r.rec.originalDue) }, { h: "Sản phẩm đầu ra", w: 30, v: (r) => r.rec.output },
+    { h: "% Hoàn thành", w: 9, num: true, v: (r) => (r.percent == null ? "" : Math.round(r.percent)) }, { h: "Trạng thái", w: 14, v: (r) => T.TASK_STATUS[r.ev.status] },
+    { h: "Cảnh báo hạn (tự động)", w: 16, alert: true, v: warn }, { h: "Kết quả đã thực hiện", w: 36, v: (r) => r.autoText || r.rec.resultTotal },
+    { h: "Kết quả thực hiện trong tuần", w: 36, v: (r) => r.rec.weekResult }, { h: "Kế hoạch tiếp theo", w: 30, v: (r) => r.rec.nextPlan },
+    { h: "Khó khăn, vướng mắc", w: 28, v: (r) => r.rec.difficulty }, { h: "Đề xuất, kiến nghị", w: 28, v: (r) => r.rec.proposal || (r.rec.extStatus === "pending" ? `Đề nghị gia hạn đến ${fmtDate(r.rec.extRequestedDue)}: ${r.rec.extReason || ""}` : "") },
+    { h: "BC tuần", w: 10, v: (r) => (r.virtual ? "Tự động" : r.reported ? "Đã cập nhật" : "Chưa") }, { h: "Ghi chú", w: 20, v: (r) => r.rec.note },
+  ], list, { freezeCols: 3, alertFill: (r) => r.ev.code === "overdue" });
+
+  // CẢNH BÁO
+  const al = open.filter((r) => ["overdue", "due_today", "due_soon"].includes(r.ev.code)).sort((a, b) => (b.ev.lateDays || 0) - (a.ev.lateDays || 0) || (a.ev.daysLeft ?? 0) - (b.ev.daysLeft ?? 0)).map((r, i) => ({ ...r, stt: i + 1 }));
+  sheet(wb, "CanhBao_QuaHan", "DANH SÁCH NHIỆM VỤ QUÁ HẠN / SẮP ĐẾN HẠN", `Tính đến ngày ${fmtDate(reportDate)} · ${sub}`, [
+    { h: "STT", w: 5, num: true, v: (r) => r.stt }, { h: "Người thực hiện", w: 20, v: (r) => r.staffName }, { h: "Loại nhiệm vụ", w: 16, v: (r) => r.type },
+    { h: "Tên nhiệm vụ", w: 55, v: (r) => r.name }, { h: "Hạn hoàn thành", w: 12, v: (r) => fmtDate(r.ev.due) }, { h: "Số ngày quá hạn / còn lại", w: 18, alert: true, v: warn },
+    { h: "% Hoàn thành", w: 9, num: true, v: (r) => (r.percent == null ? "" : Math.round(r.percent)) }, { h: "Khó khăn / Đề xuất", w: 40, v: (r) => [r.rec.difficulty, r.rec.proposal].filter(Boolean).join(" · ") },
+  ], al, { alertFill: (r) => r.ev.code === "overdue" });
+
+  // THỐNG KÊ THÁNG
+  const yr = Number(reportDate.slice(0, 4));
+  const staffList = ranking.map((x) => x.staff);
+  for (const [metric, name, sh] of [["assigned", "Giao mới", "GiaoMoi"], ["done", "Hoàn thành", "HoanThanh"]]) {
+    const mx = T.monthMatrix(rows, staffList, yr, metric);
+    sheet(wb, `TK_${sh}_${yr}`, `SỐ NHIỆM VỤ ${name.toUpperCase()} THEO NGƯỜI × THÁNG NĂM ${yr}`, sub,
+      [{ h: "Cán bộ", w: 24, v: (b) => b.name }, ...Array.from({ length: 12 }, (_, i) => ({ h: `T${i + 1}`, w: 6, num: true, v: (b) => b.counts[i] || "" })), { h: "Cả năm", w: 8, num: true, v: (b) => b.total }],
+      [...mx.body, { name: "TOÀN PHÒNG", counts: mx.totals, total: mx.total }]);
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = `BC_TienDo_NhiemVu_${week}.xlsx`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }

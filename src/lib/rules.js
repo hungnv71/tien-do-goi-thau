@@ -345,7 +345,10 @@ export const ALERT_LABEL = {
   await_liq: "Chờ thanh lý", guarantee_soon: "Sắp hết bảo lãnh/bảo hành", no_due: "Chưa có hạn", no_owner: "Thiếu người phụ trách",
   stale: "Lâu chưa cập nhật", no_milestones: "Chưa có bộ mốc", missing_done_date: "Thiếu ngày hoàn thành", liq_missing: "Thiếu hồ sơ thanh lý",
   pay_over: "Thanh toán > 100%", issue_overdue: "Vướng mắc quá hạn",
+  nv_done_pct: "Hoàn thành nhưng % < 100", nv_pct_full: "100% chưa đóng việc", nv_no_report: "Lâu không báo cáo tuần",
 };
+export const MODULE_LABEL = { lcnt: "LCNT", hd: "Hợp đồng", nv: "Nhiệm vụ" };
+export const MODULE_PAGE = { lcnt: "lcnt", hd: "hop-dong", nv: "nhiem-vu" };
 
 /** Số ngày chậm/còn lại dạng chữ. */
 export function daysText(days) {
