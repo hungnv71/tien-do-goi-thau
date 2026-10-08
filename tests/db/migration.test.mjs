@@ -256,3 +256,35 @@ test("Tổng hợp tuần cho n8n: sai khóa bị chặn, đúng khóa trả dan
   assert.equal((await db.query("select count(*)::int n from app_secrets")).rows[0].n, 0, "anon không đọc được khóa");
   await db.exec("reset role");
 });
+
+test("Việc định kỳ tự chuyển kỳ (09): tạo kỳ mới, giữ cuối tháng, không nhân đôi, kỳ cũ giữ nguyên", async () => {
+  await db.exec(sql("supabase/09_dinh_ky_voffice.sql"));
+  await db.exec(sql("supabase/09_dinh_ky_voffice.sql"));   // chạy lại an toàn
+  await db.exec(`
+    insert into tasks (id, code, title, staff_id, due_date, original_due, status, recurring, recurrence, series_id) values
+      ('r1', 'NV26-0901', 'Thanh toán OS hàng tháng', 'st_tucna', '2026-09-30', '2026-09-30', 'in_progress', true, 'monthly', 'r1'),
+      ('r2', 'NV26-0902', 'Báo cáo quý', 'st_tucna', '2026-09-15', '2026-09-15', 'done', true, 'quarterly', 'r2'),
+      ('r3', 'NV26-0903', 'Việc thường xuyên dài hạn', 'st_tucna', '2026-11-30', '2026-11-30', 'in_progress', true, 'monthly', 'r3'),
+      ('r4', 'NV26-0904', 'Đã dừng lặp', 'st_tucna', '2026-08-20', '2026-08-20', 'done', false, null, null);
+  `);
+  assert.ok(await rpc(db, "app_roll_recurring", ["2026-10-08"]) >= 2);       // r1 (tháng), r2 (quý 3 → quý 4) + việc định kỳ có sẵn
+  assert.equal(await rpc(db, "app_roll_recurring", ["2026-10-20"]), 0, "chạy lại không nhân đôi");
+  const rows = (await db.query("select series_id, due_date::text d, period, status, percent::int p, staff_id, code from tasks where series_id in ('r1','r2') and id not in ('r1','r2') order by series_id")).rows;
+  assert.deepEqual(rows.map((r) => [r.series_id, r.d, r.period, r.status, r.p, r.staff_id]),
+    [["r1", "2026-10-31", "2026-10", "not_started", 0, "st_tucna"], ["r2", "2026-12-15", "2026-Q4", "not_started", 0, "st_tucna"]]);
+  assert.match(rows[0].code, /^NV26-\d{4}$/);
+  assert.equal((await one(db, "select status from tasks where id='r1'")).status, "in_progress", "kỳ cũ giữ nguyên trạng thái thật");
+  assert.equal((await one(db, "select count(*)::int n from tasks where series_id='r3'")).n, 1, "chưa sang kỳ mới thì không tạo");
+  assert.equal((await one(db, "select count(*)::int n from tasks where coalesce(series_id,id)='r4'")).n, 1, "bỏ lặp thì không tạo");
+  // nhảy nhiều tháng chỉ tạo 1 bản ghi cho kỳ hiện tại
+  assert.ok(await rpc(db, "app_roll_recurring", ["2027-01-05"]) >= 2);
+  assert.equal((await one(db, "select max(due_date)::text d from tasks where series_id='r1'")).d, "2027-01-31");
+  // chỉ lãnh đạo / quản trị được bấm chuyển kỳ
+  const tokA = (await rpc(db, "app_login", ["st_tucna", "2468"])).token;
+  await rejects(rpc(db, "app_roll_recurring_now", [tokA]), /Chỉ lãnh đạo/);
+  const tokTP = (await rpc(db, "app_login", ["st_thainn2", "1357"])).token;
+  assert.equal(typeof (await rpc(db, "app_roll_recurring_now", [tokTP])), "number");
+  // cột VO: 1 nhiệm vụ VO có thể gắn nhiều cán bộ
+  await db.exec("update tasks set vo_id = '837076' where id in ('r3','r4')");
+  assert.equal((await one(db, "select count(*)::int n from tasks where vo_id='837076'")).n, 2);
+});

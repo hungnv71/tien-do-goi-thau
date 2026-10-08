@@ -61,7 +61,7 @@ function Shell() {
             const c = n.count === "tasks" ? taskCount : n.count === "alerts" ? alerts.action.filter((a) => ["overdue", "due_today"].includes(a.kind)).length : n.count === "mine" ? myCount : 0;
             return (
               <button key={n.id} className={page === n.id ? "on" : ""} aria-current={page === n.id ? "page" : undefined} onClick={() => go(n.id)}>
-                <n.icon size={18} aria-hidden /> {n.label}{c > 0 && <span className="cnt" aria-label={`${c} việc cần xử lý`}>{c}</span>}
+                <n.icon size={18} aria-hidden /> {n.label}{c > 0 && <span className="cnt" title={n.count === "alerts" ? `${c} việc quá hạn / đến hạn hôm nay (đếm theo việc, 1 hồ sơ có thể có nhiều việc)` : n.count === "tasks" ? `${c} nhiệm vụ quá hạn` : `${c} việc của tôi quá hạn / sắp đến hạn`} aria-label={`${c} việc cần xử lý`}>{c}</span>}
               </button>
             );
           })}
@@ -152,7 +152,8 @@ function Login() {
         </Field>}
         {err && <div className="warn-note" role="alert" style={{ marginBottom: 10 }}>{err}</div>}
         <Btn type="submit" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>{busy ? "Đang kiểm tra…" : mode === "setup" ? "Đặt PIN & vào" : "Đăng nhập"}</Btn>
-        <p className="small mut" style={{ marginBottom: 0 }}>Quyền được kiểm tra trên máy chủ theo PIN phiên đăng nhập. Nhập sai 5 lần sẽ tạm khóa 15 phút.</p>
+        <p className="small mut" style={{ marginBottom: 0 }}>Quyền được kiểm tra trên máy chủ theo PIN phiên đăng nhập. Nhập sai 5 lần sẽ tạm khóa 15 phút.
+          <br />Quên PIN: liên hệ quản trị để đặt lại — {data.staff.filter((s) => s.role === "admin" && s.active !== false).map((s) => s.fullName).join(", ") || "quản trị hệ thống"}.</p>
       </form>
     </div>
   );

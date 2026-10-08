@@ -14,7 +14,10 @@ export const tone = (kind) => ({ overdue: "red", due_today: "amber", due_soon: "
 
 export default function Dashboard() {
   const { route, go, pkgRows, hdRows, alerts, cfg, reportDate, filters, me, data, taskRows } = useApp();
-  const mod = route.params.m === "hd" ? "hd" : route.params.m === "nv" ? "nv" : "lcnt";
+  const saved = (() => { try { return localStorage.getItem("dh_dash_mod"); } catch { return null; } })();
+  const m0 = route.params.m || saved;
+  const mod = m0 === "hd" ? "hd" : m0 === "nv" ? "nv" : "lcnt";
+  if (route.params.m && route.params.m !== saved) { try { localStorage.setItem("dh_dash_mod", route.params.m); } catch { /* bỏ qua */ } }
   const rows = mod === "hd" ? hdRows : pkgRows;
   const ctx = { reportDate, cfg };
   const kpis = useMemo(() => (mod === "nv" ? [] : computeKpis(mod === "hd" ? HD_KPI : LCNT_KPI, rows, ctx)), [rows, mod, reportDate, cfg]); // eslint-disable-line
@@ -154,13 +157,14 @@ function LcntCharts({ rows }) {
   const stages = STAGES.map((s) => ({ name: s.label, value: open.filter((r) => r.ev.stage === s.id).length }));
   const noStage = open.filter((r) => !r.ev.stage).length;
   if (noStage) stages.push({ name: "Chưa xác định bước", value: noStage });
+  const shown = stages.filter((s) => s.value > 0);   // bỏ các bước = 0 cho dễ đọc
   return (
     <div className="grid2" style={{ marginBottom: 14 }}>
       <section className="card"><div className="card-h"><h2>Tiến độ theo cán bộ</h2><InfoTip text="Số gói đang tổ chức theo trạng thái. Không phản ánh năng lực cá nhân khi chưa rõ nguyên nhân chậm." /></div>
         {staff.length ? <StaffChart data={staff} unit="gói" /> : <Empty title="Không có gói đang tổ chức" />}
         <p className="small mut" style={{ margin: 0 }}>Không tự diễn giải số gói chậm là năng lực cá nhân — xem nguyên nhân tại từng hồ sơ.</p></section>
       <section className="card"><div className="card-h"><h2>Số gói đang ở từng bước</h2></div>
-        <SimpleBars data={stages} unit="gói" label="Số gói theo bước hiện tại" /></section>
+        {shown.length ? <SimpleBars data={shown} unit="gói" label="Số gói theo bước hiện tại" /> : <Empty title="Không có gói đang tổ chức" />}</section>
     </div>
   );
 }

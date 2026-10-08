@@ -38,7 +38,22 @@ export const HD_PROGRESS = {
 };
 export const EXEC_STATUS = { not_started: "Chưa bắt đầu", in_progress: "Đang thực hiện", paused: "Tạm dừng", completed: "Đã hoàn thành", terminated: "Chấm dứt", cancelled: "Đã hủy" };
 export const ACC_STATUS = { none: "Chưa nghiệm thu", partial: "Nghiệm thu một phần", done: "Đã nghiệm thu" };
-export const LIQ_STATUS = { none: "Chưa thanh lý", in_progress: "Đang thanh lý", done: "Đã thanh lý" };
+export const LIQ_STATUS = { none: "Chưa thanh lý", in_progress: "Đang thanh lý", done: "Đã thanh lý", other: "Phòng khác thực hiện" };
+/** P.QLHT chỉ phải theo dõi thanh lý khi chính phòng theo dõi thanh toán; còn lại (P.QT, tỉnh, chưa xác định) chỉ lấy thông tin. */
+export const liqTracked = (c) => c.paymentOwner === "qlht" && c.liquidationStatus !== "other";
+/** Giá trị tiết kiệm = GT kế hoạch thầu − GT ký ban đầu (cùng tiền tệ HĐ, đủ 2 số). */
+export function savingOf(c) {
+  const p = num(c.plannedValue), s = num(c.signValue);
+  if (p === null || s === null || !(p > 0) || !(s > 0)) return { planned: p, saving: null, pct: null };   // HĐ khung (GT = 0) không tính tiết kiệm
+  return { planned: p, saving: p - s, pct: Math.round(((p - s) / p) * 10000) / 100 };
+}
+/** Ngày bất thường: hoàn thành / nghiệm thu / thanh lý trước ngày ký — cần đối chiếu hồ sơ, không tự sửa. */
+export function dateIssues(c) {
+  const out = [];
+  if (!c.signDate) return out;
+  for (const [f, lb] of [["actualCompletionDate", "Hoàn thành thực tế"], ["acceptanceDate", "Nghiệm thu"], ["liquidationDate", "Thanh lý"], ["originalDue", "Hạn hoàn thành"]]) if (c[f] && c[f] < c.signDate) out.push(`${lb} (${c[f].split("-").reverse().join("/")}) trước ngày ký`);
+  return out;
+}
 export const PAY_OWNER = { qlht: "P.QLHT theo dõi", quyet_toan: "P.Quyết toán theo dõi", tinh: "Tỉnh theo dõi (HĐ khung)", khac: "Đơn vị khác" };
 export const EXT_STATUS = { proposed: "Đề nghị", approved: "Đã phê duyệt", rejected: "Từ chối" };
 export const PAY_KIND = {
@@ -219,8 +234,9 @@ export function buildPackageRows(data, reportDate, cfg) {
       kind: "package", id: p.id, rec: p, ev, staff, staffId: p.staffId || null, staffName: staffLabel(staff),
       code: p.code || "", name: p.name, category: p.category || "", unit: p.unit || "", year: p.year || yearFrom(p.policyApprovedDate || p.createdAt),
       tplName: tpl?.name || "", contracts, issues: openIssues.get(p.id) || [],
-      updatedAt: p.updatedAt, changedAfterReport: isAfter(p.updatedAt, reportDate) || ev.milestones.some((m) => isAfter(m.updatedAt, reportDate)),
-      stale: isStale(p.updatedAt, reportDate, cfg),
+      // cập nhật gần nhất của CẢ hồ sơ = max(thông tin gói, các mốc)
+      updatedAt: lastOf([p.updatedAt, ...ev.milestones.map((m) => m.updatedAt)]), changedAfterReport: isAfter(p.updatedAt, reportDate) || ev.milestones.some((m) => isAfter(m.updatedAt, reportDate)),
+      stale: isStale(lastOf([p.updatedAt, ...ev.milestones.map((m) => m.updatedAt)]), reportDate, cfg),
     };
   });
 }
@@ -242,6 +258,7 @@ export function buildContractRows(data, reportDate, cfg) {
       nextAction: c.nextAction || contractNextAction(c, progress, due, pay),
       updatedAt: c.updatedAt, changedAfterReport: isAfter(c.updatedAt, reportDate), stale: isStale(c.updatedAt, reportDate, cfg),
       active: ["not_started", "in_progress", "paused"].includes(c.execStatus),
+      saving: savingOf(c), dateIssues: dateIssues(c),
     };
   });
 }
@@ -249,7 +266,7 @@ function contractNextAction(c, progress, due, pay) {
   if (due.proposed.length) return "Trình duyệt đề nghị gia hạn";
   if (progress.code === "overdue") return "Xử lý quá hạn: đôn đốc hoặc lập hồ sơ gia hạn";
   if (progress.code === "review") return "Rà soát các văn bản gia hạn xung đột";
-  if (["done", "done_late", "done_nodate"].includes(progress.code) && c.liquidationStatus !== "done") return "Nghiệm thu, thanh lý hợp đồng";
+  if (["done", "done_late", "done_nodate"].includes(progress.code) && liqTracked(c) && c.liquidationStatus !== "done") return "Nghiệm thu, thanh lý hợp đồng";
   if (progress.code === "no_due") return "Bổ sung hạn hoàn thành";
   if (pay.over100) return "Rà soát thanh toán vượt giá trị HĐ";
   return "";
@@ -260,6 +277,7 @@ function groupIssues(issues, entity) {
   return m;
 }
 export const staffLabel = (s) => (s ? s.fullName || s.account || s.id : "Chưa phân công");
+const lastOf = (arr) => arr.filter(Boolean).map(String).sort().pop() || null;
 const yearFrom = (iso) => (iso ? Number(String(iso).slice(0, 4)) : null);
 const isAfter = (ts, reportDate) => !!ts && String(ts).slice(0, 10) > reportDate;
 const isStale = (ts, reportDate, cfg) => !!ts && diffDays(String(ts).slice(0, 10), reportDate) > cfg.staleDays;
@@ -280,7 +298,7 @@ export const HD_KPI = [
   { key: "hd_overdue", label: "Quá hạn thực hiện", icon: "03-deadline", tone: "red", hint: "Chưa hoàn thành và ngày báo cáo > hạn hiện hành", test: (r) => r.progress.code === "overdue" },
   { key: "hd_expiring", label: "Sắp hết hạn ≤ N ngày", icon: "03-deadline", tone: "amber", hint: "0 ≤ hạn hiện hành − ngày báo cáo ≤ N, chưa hoàn thành", test: (r) => ["due_today", "due_soon"].includes(r.progress.code) },
   { key: "hd_ext", label: "Đang đề nghị gia hạn", icon: "04-extension", hint: "Có đề nghị gia hạn chưa được duyệt", test: (r) => r.due.proposed.length > 0 },
-  { key: "hd_liq", label: "Chờ thanh lý", icon: "07-closeout", hint: "Đã hoàn thành thực hiện, chưa thanh lý", test: (r) => ["done", "done_late", "done_nodate"].includes(r.progress.code) && r.rec.liquidationStatus !== "done" },
+  { key: "hd_liq", label: "Chờ thanh lý", icon: "07-closeout", hint: "Đã hoàn thành, chưa thanh lý — chỉ HĐ do P.QLHT theo dõi thanh toán/thanh lý", test: (r) => ["done", "done_late", "done_nodate"].includes(r.progress.code) && liqTracked(r.rec) && r.rec.liquidationStatus !== "done" },
   { key: "hd_value", label: "Giá trị HĐ đang thực hiện", icon: "05-payment", tone: "money", hint: "Tổng giá trị hiện hành (VND) của HĐ đang thực hiện; không cộng gói thầu, không cộng ngoại tệ", test: (r) => r.active && r.value.current !== null && r.value.currency === "VND", money: true },
 ];
 export const KPI_BY_KEY = Object.fromEntries([...LCNT_KPI, ...HD_KPI].map((k) => [k.key, k]));
@@ -323,10 +341,11 @@ export function buildAlerts(pkgRows, hdRows, reportDate, cfg) {
     else if (p.code === "due_today" || p.code === "due_soon") action.push({ ...common, kind: p.code, task: "Hoàn thành thực hiện HĐ", due: r.due.currentDue, days: p.daysLeft ?? 0 });
     else if (r.due.proposed.length) action.push({ ...common, kind: "pending_ext", task: `Duyệt đề nghị gia hạn lần ${r.due.proposed[0].seq ?? ""}`.trim(), due: r.due.proposed[0].dueAfter, days: null });
     else if (p.code === "review") action.push({ ...common, kind: "review", task: "Rà soát văn bản gia hạn xung đột", due: null, days: null });
-    else if (["done", "done_late", "done_nodate"].includes(p.code) && c.liquidationStatus !== "done") action.push({ ...common, kind: "await_liq", task: "Nghiệm thu, thanh lý", due: null, days: null });
+    else if (["done", "done_late", "done_nodate"].includes(p.code) && liqTracked(c) && c.liquidationStatus !== "done") action.push({ ...common, kind: "await_liq", task: "Nghiệm thu, thanh lý", due: null, days: null });
     if (p.code === "no_due") data.push({ ...common, kind: "no_due", task: "Chưa có hạn hoàn thành" });
     if (p.code === "done_nodate") data.push({ ...common, kind: "missing_done_date", task: "Đã hoàn thành nhưng thiếu ngày hoàn thành thực tế" });
-    if (c.liquidationStatus === "done" && (!c.liquidationDate || !c.liquidationDoc)) data.push({ ...common, kind: "liq_missing", task: "Đã thanh lý nhưng thiếu ngày/hồ sơ thanh lý" });
+    if (liqTracked(c) && c.liquidationStatus === "done" && (!c.liquidationDate || !c.liquidationDoc)) data.push({ ...common, kind: "liq_missing", task: "Đã thanh lý nhưng thiếu ngày/hồ sơ thanh lý" });
+    if (r.dateIssues?.length) data.push({ ...common, kind: "date_check", task: `Ngày cần kiểm tra: ${r.dateIssues.join("; ")}` });
     if (!r.staffId) data.push({ ...common, kind: "no_owner", task: "Chưa có cán bộ phụ trách" });
     if (r.active && r.stale) data.push({ ...common, kind: "stale", task: `Chưa cập nhật > ${cfg.staleDays} ngày` });
     if (r.pay.tracked && r.pay.over100) data.push({ ...common, kind: "pay_over", task: `Đã thanh toán ${r.pay.rate.toFixed(1)}% > 100% giá trị hiện hành` });
@@ -345,7 +364,7 @@ export const ALERT_LABEL = {
   await_liq: "Chờ thanh lý", guarantee_soon: "Sắp hết bảo lãnh/bảo hành", no_due: "Chưa có hạn", no_owner: "Thiếu người phụ trách",
   stale: "Lâu chưa cập nhật", no_milestones: "Chưa có bộ mốc", missing_done_date: "Thiếu ngày hoàn thành", liq_missing: "Thiếu hồ sơ thanh lý",
   pay_over: "Thanh toán > 100%", issue_overdue: "Vướng mắc quá hạn",
-  nv_done_pct: "Hoàn thành nhưng % < 100", nv_pct_full: "100% chưa đóng việc", nv_no_report: "Lâu không báo cáo tuần",
+  date_check: "Ngày cần kiểm tra", nv_done_pct: "Hoàn thành nhưng % < 100", nv_pct_full: "100% chưa đóng việc", nv_no_report: "Lâu không báo cáo tuần",
 };
 export const MODULE_LABEL = { lcnt: "LCNT", hd: "Hợp đồng", nv: "Nhiệm vụ" };
 export const MODULE_PAGE = { lcnt: "lcnt", hd: "hop-dong", nv: "nhiem-vu" };

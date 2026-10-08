@@ -16,3 +16,7 @@ Web minh họa gói thầu.png
 # Có khóa bí mật — không đưa lên GitHub
 n8n/*_CO_KHOA.json
 supabase/05_import_nhiem_vu_tuan40.sql
+
+# File dữ liệu thật / ghi chú cá nhân
+*.xls
+Prompt.docx

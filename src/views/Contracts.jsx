@@ -9,7 +9,7 @@ import { fmtDate, suggestDue, diffDays } from "../lib/dates.js";
 import { Banner, Btn, Badge, Tag, Field, Inp, Sel, TA, Modal, DataTable, ColumnMenu, useLocalState, fmtD, money, ty, Empty, askReason, InfoTip } from "../components/ui.jsx";
 import FilterBar, { PastDateNote } from "../components/FilterBar.jsx";
 import { IssuesPanel, HistoryPanel, ImportDialog, KpiChip } from "../components/Record.jsx";
-import { exportWorkbook, parseContracts } from "../lib/excel.js";
+import { exportContractsTracking, parseContracts } from "../lib/excel.js";
 import { DataLists } from "./Tenders.jsx";
 
 const SEV = { overdue: 0, review: 1, due_today: 1, due_soon: 2, no_due: 3, on_track: 5, done_nodate: 6, done_late: 6, done: 7, terminated: 8, cancelled: 9 };
@@ -34,7 +34,7 @@ export default function Contracts() {
   return (
     <>
       <Banner icon="02-contract" title="Hợp đồng đã ký" sub={<>{rows.length} hợp đồng · giá trị hiện hành {ty(vnd.reduce((a, r) => a + r.value.current, 0))} VNĐ{rows.length !== vnd.length ? ` (+${rows.length - vnd.length} HĐ ngoại tệ/thiếu giá trị, không cộng)` : ""} · Ngày dữ liệu {fmtDate(reportDate)}</>}>
-        <Btn kind="ghost" icon={Download} onClick={() => exportWorkbook({ data, hdRows: rows, alerts, reportDate, cfg, filters, me, kpiKey: kpi })}>Xuất Excel</Btn>
+        <Btn kind="ghost" icon={Download} onClick={() => exportContractsTracking({ data, hdRows: rows, reportDate, cfg, filters, me, kpiKey: kpi })} title="Theo mẫu file Báo cáo các HĐ (TỔNG HỢP + DS GÓI THẦU)">Xuất Excel (mẫu HĐ theo dõi)</Btn>
         {can.write && <Btn kind="ghost" icon={Upload} onClick={() => setImporting(true)}>Nhập Excel</Btn>}
         {can.write && <Btn icon={Plus} onClick={() => setAdding(true)}>Thêm HĐ</Btn>}
       </Banner>
@@ -54,15 +54,15 @@ export default function Contracts() {
 
 const HCOLS = [
   { key: "code", label: "Mã gói", fixed: true }, { key: "no", label: "Số HĐ & tên", fixed: true }, { key: "ctr", label: "Nhà thầu" }, { key: "staff", label: "Cán bộ" },
-  { key: "sign", label: "Ngày ký" }, { key: "due", label: "Hạn hiện hành" }, { key: "ext", label: "Gia hạn lần" }, { key: "value", label: "Giá trị hiện hành" },
+  { key: "sign", label: "Ngày ký" }, { key: "due", label: "Hạn hiện hành" }, { key: "ext", label: "Gia hạn lần" }, { key: "planned", label: "GT kế hoạch thầu" }, { key: "value", label: "Giá trị hiện hành" }, { key: "saving", label: "Tiết kiệm" },
   { key: "prog", label: "Tiến độ" }, { key: "next", label: "Việc tiếp theo" }, { key: "orig", label: "Hạn ban đầu" }, { key: "lateo", label: "Chậm so hạn gốc" },
   { key: "exec", label: "Thực hiện" }, { key: "acc", label: "Nghiệm thu" }, { key: "pay", label: "Thanh toán" }, { key: "liq", label: "Thanh lý" },
   { key: "method", label: "Hình thức LCNT" }, { key: "cat", label: "Loại gói" }, { key: "year", label: "Năm" }, { key: "guar", label: "Bảo lãnh / bảo hành" }, { key: "upd", label: "Cập nhật cuối" },
 ];
-const DEFAULT_H = ["code", "no", "ctr", "staff", "sign", "due", "ext", "value", "prog", "next"];
-function HdColumns() { const [v, setV] = useLocalState("dh_hd_cols", DEFAULT_H); return <ColumnMenu columns={HCOLS} visible={v} onChange={setV} />; }
+const DEFAULT_H = ["code", "no", "ctr", "staff", "sign", "due", "planned", "value", "saving", "prog", "next"];
+function HdColumns() { const [v, setV] = useLocalState("dh_hd_cols2", DEFAULT_H); return <ColumnMenu columns={HCOLS} visible={v} onChange={setV} />; }
 function ContractTable({ rows, onOpen }) {
-  const [vis] = useLocalState("dh_hd_cols", DEFAULT_H);
+  const [vis] = useLocalState("dh_hd_cols2", DEFAULT_H);
   const all = {
     code: { label: "Mã gói", stick: true, render: (r) => <span className="code">{r.code || "—"}</span> },
     no: { label: "Số HĐ & tên", stick: true, render: (r) => <><div className="code b">{r.no}</div><button className="linkbtn wrap2 small" style={{ fontWeight: 500 }} onClick={() => onOpen(r.id)}>{r.name}</button></> },
@@ -72,7 +72,9 @@ function ContractTable({ rows, onOpen }) {
     due: { label: "Hạn hiện hành", render: (r) => <span className={`num nowrap ${r.progress.code === "overdue" ? "tone-red b" : ""}`}>{r.due.conflict ? "Cần rà soát" : fmtD(r.due.currentDue)}</span> },
     ext: { label: "Gia hạn lần", render: (r) => <span className="num">{r.due.extCount || "—"}{r.due.proposed.length ? <div><Tag>{r.due.proposed.length} chờ duyệt</Tag></div> : null}</span> },
     value: { label: "Giá trị hiện hành", right: true, render: (r) => <span className="num nowrap" title={`${money(r.value.current, r.value.currency)}${r.value.delta ? ` (gốc ${money(r.value.original, r.value.currency)})` : ""}`}>{r.value.currency === "VND" ? ty(r.value.current) : money(r.value.current, r.value.currency)}{r.value.delta ? <div className="small mut">có điều chỉnh</div> : null}</span> },
-    prog: { label: "Tiến độ", render: (r) => progressBadge(r.progress) },
+    planned: { label: "GT kế hoạch thầu", right: true, render: (r) => <span className="num nowrap" title={money(r.rec.plannedValue, r.value.currency)}>{r.rec.plannedValue == null ? "—" : r.value.currency === "VND" ? ty(r.rec.plannedValue) : money(r.rec.plannedValue, r.value.currency)}</span> },
+    saving: { label: "Tiết kiệm", right: true, render: (r) => r.saving.saving == null ? <span className="mut">—</span> : <span className={`num nowrap ${r.saving.saving < 0 ? "tone-red" : ""}`} title={money(r.saving.saving, r.value.currency)}>{r.value.currency === "VND" ? ty(r.saving.saving) : money(r.saving.saving, r.value.currency)}<div className="small mut">{r.saving.pct}%</div></span> },
+    prog: { label: "Tiến độ", render: (r) => <>{progressBadge(r.progress)}{r.dateIssues.length ? <div><Badge tone="amber" title={r.dateIssues.join("; ")}>Ngày cần kiểm tra</Badge></div> : null}</> },
     next: { label: "Việc tiếp theo", render: (r) => <div className="small wrap2" style={{ maxWidth: 220 }}>{r.nextAction || "—"}</div> },
     orig: { label: "Hạn ban đầu", render: (r) => <span className="num nowrap">{fmtD(r.due.originalDue)}</span> },
     lateo: { label: "Chậm so hạn gốc", render: (r) => (r.progress.lateVsOriginal ? `${r.progress.lateVsOriginal} ngày` : "—") },
@@ -114,6 +116,7 @@ export function ContractDetail({ id, onClose }) {
         {editable && <Btn kind="ghost" sm icon={Pencil} onClick={() => setEdit(true)}>Sửa thông tin</Btn>}
         {can.manage && <Btn kind="danger" sm icon={Trash2} onClick={del}>Xóa</Btn>}
       </div>
+      {r.dateIssues.length > 0 && <div className="warn-note" style={{ marginBottom: 10 }}><b>Ngày cần kiểm tra:</b> {r.dateIssues.join("; ")}. Đối chiếu hồ sơ gốc trước khi dùng HĐ này để thống kê đúng/chậm hạn — hệ thống không tự sửa ngày.</div>}
       <div className="tabs" role="tablist">
         {[["ov", "Tổng quan"], ["ms", "Mốc thực hiện"], ["ext", `Gia hạn & phụ lục (${r.due.all.length})`], ["pay", "Nghiệm thu & thanh toán"], ["doc", "Hồ sơ"], ["issue", `Vướng mắc (${r.issues.length})`], ["log", "Lịch sử"]].map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>))}
@@ -132,7 +135,7 @@ export function ContractDetail({ id, onClose }) {
                 ["Hoàn thành thực tế", fmtD(c.actualCompletionDate)], ["Chậm so hạn gốc", r.progress.lateVsOriginal ? `${r.progress.lateVsOriginal} ngày` : "—"],
                 ["Giá trị ký ban đầu", money(r.value.original, r.value.currency)], ["Điều chỉnh (phụ lục đã duyệt)", money(r.value.delta, r.value.currency)],
                 ["Giá trị hiện hành", <b key="v">{money(r.value.current, r.value.currency)}</b>], ["Cơ sở VAT", { before_vat: "Trước VAT", after_vat: "Sau VAT" }[c.vatBasis] || "Chưa rõ"],
-                ["GT kế hoạch thầu", money(c.plannedValue, c.currency)], ["Bảo lãnh thực hiện đến", fmtD(c.guaranteeUntil)], ["Bảo hành đến", fmtD(c.warrantyUntil)],
+                ["GT kế hoạch thầu", money(c.plannedValue, c.currency)], ["Giá trị tiết kiệm", r.saving.saving == null ? "—" : `${money(r.saving.saving, c.currency)} (${r.saving.pct}%)`], ["Bảo lãnh thực hiện đến", fmtD(c.guaranteeUntil)], ["Bảo hành đến", fmtD(c.warrantyUntil)],
                 ["Việc tiếp theo", r.nextAction || "—"],
               ].map(([k, v]) => <div key={k} className="field"><dt className="lbl">{k}</dt><dd style={{ margin: 0 }}>{v}</dd></div>)}
             </dl>
@@ -170,7 +173,9 @@ function Timeline({ r, reportDate }) {
   if (c.actualCompletionDate) ev.push([c.actualCompletionDate, "Hoàn thành thực tế", r.progress.code === "done_late" ? `chậm ${r.progress.lateDays} ngày` : "", r.progress.code === "done_late" ? "red" : ""]);
   if (c.acceptanceDate) ev.push([c.acceptanceDate, "Nghiệm thu", ""]);
   if (c.liquidationDate) ev.push([c.liquidationDate, "Thanh lý", c.liquidationDoc || ""]);
-  ev.push([reportDate, "Ngày báo cáo", r.due.currentDue ? `hạn hiện hành ${fmtD(r.due.currentDue)} · ${daysText(diffDays(reportDate, r.due.currentDue))}` : "", "red"]);
+  const doneCode = ["done", "done_late", "done_nodate"].includes(r.progress.code);
+  // Đã hoàn thành: không tính tiếp số ngày chậm đến ngày báo cáo (dùng chung kết quả với danh sách / cảnh báo)
+  ev.push([reportDate, "Ngày báo cáo", doneCode ? `đã hoàn thành ${fmtD(c.actualCompletionDate)}${r.progress.code === "done_late" ? ` · chậm ${r.progress.lateDays} ngày so với hạn` : ""}` : r.due.currentDue ? `hạn hiện hành ${fmtD(r.due.currentDue)} · ${daysText(diffDays(reportDate, r.due.currentDue))}` : "", doneCode ? "" : "red"]);
   ev.sort((a, b) => a[0].localeCompare(b[0]));
   return (
     <ul className="tl">
@@ -365,8 +370,7 @@ export function ContractForm({ init = {}, onClose }) {
     if (!f.contractNo?.trim()) return setErr("Nhập số hợp đồng.");
     const dup = data.contracts.find((c) => c.id !== f.id && String(c.contractNo).trim().toUpperCase() === f.contractNo.trim().toUpperCase() && (c.unit || "") === (f.unit || ""));
     if (dup) return setErr(`Số HĐ đã tồn tại trong đơn vị ${f.unit || ""}.`);
-    if (f.liquidationStatus === "done" && (!f.liquidationDate || !f.liquidationDoc) && (init.liquidationStatus !== "done" || isNew)) return setErr("“Đã thanh lý” cần ngày thanh lý và hồ sơ xác nhận.");
-    if (f.execStatus === "completed" && !f.actualCompletionDate && init.execStatus !== "completed") return setErr("Chuyển “Đã hoàn thành” cần ngày hoàn thành thực tế.");
+    // Không bắt buộc ngày/hồ sơ thanh lý: thanh quyết toán có thể do phòng khác thực hiện (chỉ cảnh báo dữ liệu nếu P.QLHT tự theo dõi)
     const ops = [];
     let contractorId = f.contractorId || null;
     if (newCtr.trim()) { contractorId = genId("nt_"); ops.push({ table: "contractors", op: "insert", id: contractorId, data: { name: newCtr.trim(), shortName: newCtr.trim().length <= 20 ? newCtr.trim() : null } }); }
@@ -420,7 +424,7 @@ export function ContractForm({ init = {}, onClose }) {
         <Field label="Trạng thái thực hiện"><Sel value={f.execStatus} onChange={set("execStatus")}>{Object.entries(EXEC_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
         <Field label="Nghiệm thu"><Sel value={f.acceptanceStatus} onChange={set("acceptanceStatus")}>{Object.entries(ACC_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
         <Field label="Ngày nghiệm thu"><Inp type="date" value={f.acceptanceDate || ""} onChange={set("acceptanceDate")} /></Field>
-        <Field label="Thanh lý" hint="Đã thanh lý cần ngày + hồ sơ; không suy từ thanh toán 100%"><Sel value={f.liquidationStatus} onChange={set("liquidationStatus")}>{Object.entries(LIQ_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
+        <Field label="Thanh lý" hint="Không bắt buộc. Chọn “Phòng khác thực hiện” nếu thanh quyết toán thuộc phòng khác — hệ thống không nhắc thanh lý"><Sel value={f.liquidationStatus} onChange={set("liquidationStatus")}>{Object.entries(LIQ_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
         <Field label="Ngày thanh lý"><Inp type="date" value={f.liquidationDate || ""} onChange={set("liquidationDate")} /></Field>
         <Field label="Hồ sơ thanh lý"><Inp value={f.liquidationDoc || ""} onChange={set("liquidationDoc")} /></Field>
         <Field label="Theo dõi thanh toán"><Sel value={f.paymentOwner || ""} onChange={set("paymentOwner")}><option value="">Chưa xác định</option>{Object.entries(PAY_OWNER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>

@@ -79,6 +79,7 @@ export const api = {
   changePin: (token, oldPin, newPin) => rpc("app_change_pin", { p_token: token, p_old: oldPin, p_new: newPin }),
   resetPin: (token, staffId, reason) => rpc("app_reset_pin", { p_token: token, p_staff_id: staffId, p_reason: reason }),
   pinStatus: () => rpc("app_pin_status", {}),
+  rollRecurring: (token) => rpc("app_roll_recurring_now", { p_token: token }),
   /** ops: [{table, op:'insert'|'update'|'delete', id, data (camelCase), reason}] */
   write: (token, ops) => rpc("app_write_batch", {
     p_token: token,

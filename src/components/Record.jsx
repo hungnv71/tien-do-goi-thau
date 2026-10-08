@@ -60,7 +60,27 @@ const FIELD_VI = {
   liquidation_status: "Thanh lý", acceptance_status: "Nghiệm thu", actual_completion_date: "Ngày hoàn thành", next_action: "Việc tiếp theo",
   plan_locked: "Khóa kế hoạch", "*": "Bản ghi", value: "Giá trị", due_after: "Hạn sau", delta_value: "Giá trị điều chỉnh", doc_number: "Số văn bản",
   delay_reason: "Nguyên nhân chậm", target_sign_date: "Mục tiêu ký HĐ", package_value: "Giá gói", payment_owner: "Theo dõi thanh toán", amount: "Số tiền",
+  due_date: "Hạn hoàn thành", percent: "% hoàn thành", completed_date: "Ngày hoàn thành", title: "Tên nhiệm vụ", recurring: "Việc định kỳ", due_locked: "Khóa hạn",
+  ext_status: "Gia hạn", ext_requested_due: "Hạn xin gia hạn", ext_reason: "Lý do xin gia hạn", difficulty: "Khó khăn", result_total: "Kết quả lũy kế",
+  vo_id: "ID Voffice", vo_due: "Hạn Voffice", vo_status: "Trạng thái Voffice", vo_ext_count: "Số lần gia hạn VO", plan_id: "Kế hoạch phòng", package_id: "Gói thầu",
+  planned_value: "GT kế hoạch thầu", liquidation_date: "Ngày thanh lý", liquidation_doc: "Hồ sơ thanh lý", acceptance_date: "Ngày nghiệm thu", note: "Ghi chú",
+  name: "Tên", contract_no: "Số HĐ", sign_date: "Ngày ký", contractor_id: "Nhà thầu", owner_id: "Người chủ trì", collaborators: "Phối hợp", evidence_url: "Minh chứng",
 };
+const ENTITY_VI = { packages: "Gói thầu", package_milestones: "Mốc", contracts: "Hợp đồng", contract_extensions: "Gia hạn HĐ", contract_amendments: "Phụ lục HĐ",
+  contract_milestones: "Mốc HĐ", contract_acceptances: "Nghiệm thu", contract_payments: "Thanh toán", issues: "Vướng mắc", tasks: "Nhiệm vụ", task_plans: "Kế hoạch phòng" };
+const CODE_VI = { in_progress: "Đang thực hiện", not_started: "Chưa bắt đầu", done: "Hoàn thành", completed: "Đã hoàn thành", cancelled: "Đã hủy", waiting: "Chờ ý kiến / phối hợp",
+  paused: "Tạm dừng", active: "Đang thực hiện", terminated: "Chấm dứt", pending: "Chờ duyệt", approved: "Đã duyệt", rejected: "Từ chối", proposed: "Đề nghị", none: "Chưa",
+  other: "Phòng khác thực hiện", true: "Có", false: "Không", qlht: "P.QLHT", quyet_toan: "P.Quyết toán", tinh: "Tỉnh" };
+/** Hiển thị giá trị lịch sử theo ngôn ngữ nghiệp vụ: ngày dd/mm/yyyy, mã trạng thái → chữ, mã cán bộ → tên. */
+function humanVal(v, field, data) {
+  if (v === null || v === undefined || v === "") return "chưa có";
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.split("-").reverse().join("/");
+  if (/(^|_)staff_id$|owner_id$/.test(field)) return staffLabel(data.staff.find((x) => x.id === s)) || s;
+  if (CODE_VI[s]) return CODE_VI[s];
+  if (/value|amount/.test(field) && /^-?\d+(\.\d+)?$/.test(s)) return new Intl.NumberFormat("vi-VN").format(Number(s));
+  return s.length > 160 ? s.slice(0, 160) + "…" : s;
+}
 /** Lịch sử: người sửa, thời gian, trước/sau, lý do. */
 export function HistoryPanel({ ids }) {
   const { data } = useApp();
@@ -77,14 +97,20 @@ export function HistoryPanel({ ids }) {
   if (!rows) return <Loading text="Đang tải lịch sử…" />;
   if (!rows.length) return <Empty icon="06-progress" title="Chưa có lịch sử thay đổi">{DEMO ? "Chế độ minh họa không lưu lịch sử." : "Lịch sử được ghi từ khi nâng cấp lên phiên bản có phân quyền."}</Empty>;
   const dt = (t) => new Date(t).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour12: false });
+  const entityName = (r) => {
+    const base = ENTITY_VI[r.entity] || r.entity;
+    if (r.entity === "package_milestones") { const m = data.package_milestones.find((x) => x.id === r.entityId); return m ? `${base}: ${m.name}` : base; }
+    if (r.entity === "contract_extensions") { const e = data.contract_extensions.find((x) => x.id === r.entityId); return e ? `${base} lần ${e.seq ?? ""}` : base; }
+    return base;
+  };
   return (
     <DataTable short rows={rows} columns={[
       { key: "t", label: "Thời gian", render: (r) => <span className="nowrap small">{dt(r.at)}</span> },
-      { key: "u", label: "Người sửa", render: (r) => staffLabel(data.staff.find((s) => s.id === r.staffId)) },
-      { key: "e", label: "Đối tượng", render: (r) => <span className="small">{r.entity}</span> },
-      { key: "f", label: "Trường", render: (r) => FIELD_VI[r.field] || r.field },
-      { key: "o", label: "Trước", render: (r) => <span className="small">{r.field === "*" ? "" : r.oldValue ?? "—"}</span> },
-      { key: "n", label: "Sau", render: (r) => <span className="small">{r.newValue ?? "—"}</span> },
+      { key: "u", label: "Người sửa", render: (r) => (r.staffId ? staffLabel(data.staff.find((s) => s.id === r.staffId)) : "Hệ thống (tự động)") },
+      { key: "e", label: "Đối tượng", render: (r) => <span className="small">{entityName(r)}</span> },
+      { key: "f", label: "Nội dung", render: (r) => FIELD_VI[r.field] || r.field },
+      { key: "o", label: "Trước", render: (r) => <span className="small">{r.field === "*" ? "" : humanVal(r.oldValue, r.field, data)}</span> },
+      { key: "n", label: "Sau", render: (r) => <span className="small">{r.field === "*" ? (r.newValue || (r.oldValue ? "Đã xóa" : "")) : humanVal(r.newValue, r.field, data)}</span> },
       { key: "r", label: "Lý do", render: (r) => <span className="small">{r.reason || ""}</span> },
     ]} />
   );

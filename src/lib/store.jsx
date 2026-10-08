@@ -172,7 +172,7 @@ export function AppProvider({ children }) {
   }), [role, me]);
 
   const value = {
-    DEMO, data, status, reload: load, session, setSession, me, role, can, cfg,
+    DEMO, data, setData, status, reload: load, session, setSession, me, role, can, cfg,
     reportDate, setReportDate, today: todayVN(), filters, setFilters, route, go, toast, notify, write,
     allPkgRows, allHdRows, pkgRows, hdRows, alerts, allTaskRows, taskRows,
   };

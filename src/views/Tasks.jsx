@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { Download, Plus, Pencil, Trash2, Lock, Unlock, Send, CalendarClock, Check, X as XIcon, ChevronRight, CornerDownLeft, ExternalLink } from "lucide-react";
+import { Download, Plus, Pencil, Trash2, Lock, Unlock, Send, CalendarClock, Check, X as XIcon, ChevronRight, CornerDownLeft, ExternalLink, Upload, RefreshCw, Repeat, History } from "lucide-react";
 import { useApp } from "../lib/store.jsx";
-import { genId } from "../lib/supabase.js";
+import { genId, api, reloadTable } from "../lib/supabase.js";
+import { HistoryPanel } from "../components/Record.jsx";
+import { VoImport } from "./VoImport.jsx";
 import { fmtDate, todayVN, weekday } from "../lib/dates.js";
 import { staffLabel, daysText, rank, ROLE } from "../lib/rules.js";
-import { TASK_TYPES, TASK_STATUS, TASK_STATE, EXT_TASK, taskKpis, staffRanking, monthMatrix, isoWeek, weekLabel, weekBounds, prevWeek, OPEN, DONE } from "../lib/tasks.js";
+import { TASK_TYPES, TASK_STATUS, TASK_STATE, EXT_TASK, taskKpis, staffRanking, monthMatrix, isoWeek, weekLabel, weekBounds, prevWeek, OPEN, DONE, RECURRENCE, periodOf, periodLabel } from "../lib/tasks.js";
 import { Banner, Btn, Badge, Field, Inp, Sel, TA, Modal, DataTable, Empty, Icon3D, askReason, fmtD, InfoTip } from "../components/ui.jsx";
 import FilterBar, { PastDateNote } from "../components/FilterBar.jsx";
 import { StaffChart, ActionTable } from "./Dashboard.jsx";
@@ -43,24 +45,35 @@ export function WeekReminder() {
 }
 
 export default function Tasks() {
-  const { route, go, taskRows, cfg, reportDate, data, me, can, filters } = useApp();
+  const { route, go, taskRows, cfg, reportDate, data, me, can, filters, session, notify, setData, DEMO } = useApp();
   const tab = route.params.tab || "ds";
+  const reloadTasks = async () => { if (DEMO) return; const t = await reloadTable("tasks"); setData((d) => ({ ...d, tasks: t })); };
   const [adding, setAdding] = useState(null);
   const setParams = (p) => go("nhiem-vu", { ...route.params, ...p });
   const week = isoWeek(reportDate);
-  const TABS = [["ds", "Danh sách nhiệm vụ"], ["tuan", "Cập nhật tuần"], ["xh", "Xếp hạng & thống kê"], ["kh", "Kế hoạch phòng"]];
+  const [voOpen, setVoOpen] = useState(false);
+  const unassigned = (data.tasks || []).filter((t) => !t.staffId && !["done", "cancelled"].includes(t.status)).length;
+  const TABS = [["ds", "Danh sách nhiệm vụ"], ["tuan", "Cập nhật tuần"], ["cg", `Chưa giao (${unassigned})`], ["xh", "Khối lượng & thống kê"], ["kh", "Kế hoạch phòng"]];
+  const roll = async () => {
+    try { const n = await api.rollRecurring(session.token); await reloadTasks(); notify(n ? `Đã tạo ${n} việc định kỳ cho kỳ mới` : "Không có việc định kỳ nào cần chuyển kỳ"); }
+    catch (e) { notify(e.message, "err"); }
+  };
   return (
     <>
       <Banner icon="08-responsibility" title="Nhiệm vụ phòng" sub={<>{weekLabel(week)} · Hạn nhiệm vụ khóa cứng, đổi hạn qua đề nghị gia hạn · Gói thầu tự liên kết từ phân hệ LCNT · Ngày dữ liệu {fmtDate(reportDate)}</>}>
         <Btn kind="ghost" icon={Download} onClick={() => exportTasksWorkbook({ data, rows: taskRows, reportDate, cfg, filters, me })}>Xuất Excel (mẫu BC tuần)</Btn>
+        {can.manage && <Btn kind="ghost" icon={Upload} onClick={() => setVoOpen(true)} title="Nhập file “Báo cáo thực hiện nhiệm vụ đơn vị” xuất từ Voffice">Nhập từ Voffice</Btn>}
+        {can.manage && !DEMO && <Btn kind="ghost" icon={RefreshCw} onClick={roll} title="Hệ thống tự chuyển kỳ lúc 00:05 hằng ngày; bấm để chạy ngay">Chuyển kỳ việc định kỳ</Btn>}
         {can.write && <Btn icon={Plus} onClick={() => setAdding({})}>{can.manage ? "Giao nhiệm vụ" : "Thêm nhiệm vụ"}</Btn>}
       </Banner>
       <div className="tabs" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => go("nhiem-vu", { tab: k })}>{l}</button>)}</div>
-      {tab !== "tuan" && tab !== "kh" && <FilterBar tasksOnly showContractor={false} />}
+      {!["tuan", "kh", "cg"].includes(tab) && <FilterBar tasksOnly showContractor={false} />}
       {tab !== "tuan" && <PastDateNote />}
       {tab === "ds" && <TaskList setParams={setParams} />}
       {tab === "tuan" && <WeeklyUpdate />}
       {tab === "xh" && <RankStats />}
+      {tab === "cg" && <Unassigned onOpen={(id) => setParams({ open: id })} />}
+      {voOpen && <VoImport onClose={() => setVoOpen(false)} onDone={() => go("nhiem-vu", { tab: "cg" })} />}
       {tab === "kh" && <Plans onAddTask={(planId) => setAdding({ planId })} />}
       {route.params.open && <TaskDetail id={route.params.open} onClose={() => setParams({ open: "" })} />}
       {adding && <TaskForm init={adding} onClose={() => setAdding(null)} />}
@@ -103,7 +116,9 @@ function TaskList({ setParams }) {
     if (kpi && kpis[kpi]) l = l.filter((r) => kpis[kpi].ids.has(r.id));
     else if (!showDone && !["done", "inactive"].includes(filters.status)) l = l.filter((r) => OPEN(r.ev.code));
     if (!showPkg && kpi !== "nv_pkg") l = l.filter((r) => !r.virtual);
-    if (type) l = l.filter((r) => r.type === type);
+    if (type === "__rec") l = l.filter((r) => r.rec.recurring);
+    else if (type === "__vo") l = l.filter((r) => r.rec.voId);
+    else if (type) l = l.filter((r) => r.type === type);
     if (plan) l = l.filter((r) => r.rec.planId === plan);
     return [...l].sort(sortRows);
   }, [taskRows, kpi, kpis, showDone, showPkg, type, plan, filters.status]);
@@ -116,7 +131,7 @@ function TaskList({ setParams }) {
         <div className="row">
           {kpi && <span className="chip">Chỉ tiêu: {kpis[kpi]?.label.replace("N ngày", `${cfg.taskSoonDays} ngày`)} <button className="linkbtn" onClick={() => setParams({ kpi: "" })} aria-label="Bỏ lọc chỉ tiêu"><XIcon size={13} /></button></span>}
           {planObj && <span className="chip">Kế hoạch: {planObj.docNo || planObj.title} <button className="linkbtn" onClick={() => setParams({ plan: "" })} aria-label="Bỏ lọc kế hoạch"><XIcon size={13} /></button></span>}
-          <label className="row small">Loại <Sel style={{ width: 200 }} value={type} onChange={(e) => setType(e.target.value)}><option value="">Tất cả</option>{TASK_TYPES.map((t) => <option key={t}>{t}</option>)}</Sel></label>
+          <label className="row small">Loại <Sel style={{ width: 200 }} value={type} onChange={(e) => setType(e.target.value)}><option value="">Tất cả</option><option value="__rec">↻ Việc định kỳ</option><option value="__vo">Có trên Voffice</option>{TASK_TYPES.map((t) => <option key={t}>{t}</option>)}</Sel></label>
           <label className="row small"><input type="checkbox" checked={showPkg} onChange={(e) => setShowPkg(e.target.checked)} /> Gồm gói thầu (tự động)</label>
           <label className="row small"><input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Hiện cả việc đã xong / hủy</label>
         </div>
@@ -127,7 +142,7 @@ function TaskList({ setParams }) {
         { key: "n", label: "Nhiệm vụ", stick: true, render: (r) => (
           <div style={{ minWidth: 260, maxWidth: 420 }}>
             <button className="linkbtn wrap2" style={{ textAlign: "left" }} onClick={() => open(r)}>{r.name}</button>
-            <div className="small mut">{r.type}{r.virtual ? " · tự động từ LCNT" : ""}{r.rec.sourceDoc ? ` · ${r.rec.sourceDoc}` : ""}{r.plan ? ` · KH: ${r.plan.docNo || r.plan.title}` : ""}</div>
+            <div className="small mut wrap2" title={r.rec.sourceDoc || ""}>{r.rec.recurring && <Badge tone="blue" title={RECURRENCE[r.rec.recurrence || "monthly"]}>↻ {periodLabel(r.rec.period || periodOf(r.rec.dueDate, r.rec.recurrence)) || "Định kỳ"}</Badge>} {r.rec.voId && <Badge tone="gray" title="Nhiệm vụ trên Voffice">VO {r.rec.voId}</Badge>} {r.type}{r.virtual ? " · tự động từ LCNT" : ""}{r.rec.sourceDoc ? ` · ${r.rec.sourceDoc}` : ""}{r.plan ? ` · KH: ${r.plan.docNo || r.plan.title}` : ""}</div>
           </div>) },
         { key: "s", label: "Chủ trì", render: (r) => <span className="nowrap">{r.staffName}</span> },
         { key: "g", label: "Ngày giao", render: (r) => <span className="nowrap num">{fmtD(r.rec.assignedDate)}</span> },
@@ -263,6 +278,7 @@ function TaskDetail({ id, onClose }) {
   const [mode, setMode] = useState(null); // edit | quick | ext
   const [qf, setQf] = useState(null);
   const [ext, setExt] = useState({ due: "", reason: "" });
+  const [showLog, setShowLog] = useState(false);
   if (!r) return <Modal title="Không tìm thấy nhiệm vụ" onClose={onClose}><Empty title="Nhiệm vụ không tồn tại hoặc đã bị xóa" /></Modal>;
   const t = r.rec;
   const editable = can.edit(t.staffId);
@@ -273,6 +289,7 @@ function TaskDetail({ id, onClose }) {
   const reject = async () => { const reason = await askReason("Lý do từ chối đề nghị gia hạn"); if (reason) write([{ table: "tasks", op: "update", id: t.id, reason, data: { extStatus: "rejected" } }], "Đã từ chối đề nghị gia hạn"); };
   const sendExt = async () => { if (await write([{ table: "tasks", op: "update", id: t.id, data: { extRequestedDue: ext.due, extReason: ext.reason.trim(), extStatus: "pending" } }], "Đã gửi đề nghị gia hạn — chờ lãnh đạo duyệt")) setMode(null); };
   const del = async () => { const reason = await askReason("Xóa nhiệm vụ? (khuyến nghị chuyển trạng thái Hủy)"); if (reason && (await write([{ table: "tasks", op: "delete", id: t.id, reason }], "Đã xóa nhiệm vụ"))) onClose(); };
+  const stopRepeat = async () => { const reason = await askReason("Dừng lặp việc định kỳ (kỳ sau không tự tạo)"); if (reason) write([{ table: "tasks", op: "update", id: t.id, reason, data: { recurring: false } }], "Đã dừng lặp — kỳ sau không tự tạo việc này"); };
   const saveQuick = async () => { if (await write(updateOps(t, qf, me.id, week), "Đã cập nhật tiến độ")) setMode(null); };
   const info = [
     ["Loại nhiệm vụ", t.taskType], ["Văn bản / nguồn giao", t.sourceDoc || "—"], ["Người / cấp giao", t.assigner || "—"], ["Chủ trì", r.staffName], ["Phối hợp", t.collaborators || "—"],
@@ -281,7 +298,9 @@ function TaskDetail({ id, onClose }) {
     ["Sản phẩm đầu ra", t.output || "—"], ["% hoàn thành", pctText(r.percent) + (r.pkg ? " (tự động theo mốc gói thầu)" : "")], ["Trạng thái", TASK_STATUS[r.ev.status]], ["Ngày hoàn thành", fmtD(r.ev.completed)],
     ["Kế hoạch phòng", r.plan ? `${r.plan.docNo ? r.plan.docNo + " · " : ""}${r.plan.title}` : "—"],
     ["Gói thầu liên kết", r.pkg ? <button key="p" className="linkbtn" onClick={() => go("lcnt", { open: r.pkg.id })}>{r.pkg.code || r.pkg.name}</button> : "—"],
-    ["Nhiệm vụ thường xuyên", t.recurring ? "Có" : "Không"], ["Báo cáo gần nhất", t.lastReportWeek ? `${t.lastReportWeek}` : "Chưa có"],
+    ["Việc định kỳ", t.recurring ? `${RECURRENCE[t.recurrence || "monthly"]} · kỳ ${periodLabel(t.period || periodOf(t.dueDate, t.recurrence)) || "—"} (sang kỳ mới hệ thống tự tạo việc kỳ sau)` : "Không"],
+    ["Báo cáo gần nhất", t.lastReportWeek ? `${t.lastReportWeek}` : "Chưa có"],
+    ...(t.voId ? [["Voffice", `ID ${t.voId}${t.voDue ? ` · hạn VO ${fmtDate(t.voDue)}` : ""}${t.voExtCount ? ` · gia hạn ${t.voExtCount} lần` : ""}${t.voStatus ? ` · ${t.voStatus}` : ""}${t.voSyncedAt ? ` · đồng bộ ${fmtDate(String(t.voSyncedAt).slice(0, 10))}` : ""}`]] : []),
   ];
   return (
     <Modal size="wide" title={<span className="code" style={{ fontSize: 15 }}>{t.code || "Nhiệm vụ"}</span>} sub={<span className="row" style={{ gap: 8 }}>{stateBadge(r.ev)}<span className="wrap2" style={{ maxWidth: 720 }}>{t.title}</span></span>} onClose={onClose}>
@@ -290,6 +309,8 @@ function TaskDetail({ id, onClose }) {
         {editable && <Btn kind="ghost" sm icon={Pencil} onClick={() => setMode("edit")}>Sửa thông tin</Btn>}
         {editable && OPEN(r.ev.code) && locked && !can.manage && <Btn kind="ghost" sm icon={CalendarClock} onClick={() => { setExt({ due: t.extRequestedDue || "", reason: "" }); setMode("ext"); }}>Đề nghị gia hạn</Btn>}
         {can.manage && r.ev.pendingExt && <><Btn sm icon={Check} onClick={approve}>Duyệt gia hạn → {fmtD(t.extRequestedDue)}</Btn><Btn kind="ghost" sm icon={XIcon} onClick={reject}>Từ chối</Btn></>}
+        {editable && t.recurring && <Btn kind="ghost" sm icon={Repeat} onClick={stopRepeat} title="Kỳ sau không tự tạo việc này nữa">Dừng lặp</Btn>}
+        <Btn kind="ghost" sm icon={History} onClick={() => setShowLog(!showLog)}>{showLog ? "Ẩn lịch sử" : "Lịch sử thay đổi"}</Btn>
         <span style={{ flex: 1 }} />
         {can.manage && <Btn kind="danger" sm icon={Trash2} onClick={del}>Xóa</Btn>}
       </div>
@@ -328,6 +349,7 @@ function TaskDetail({ id, onClose }) {
             : <div className="small mut">Chưa có cập nhật trên web (dữ liệu ban đầu nhập từ file tuần 40).</div>}
         </div>
       </div>
+      {showLog && <div style={{ marginTop: 12 }}><span className="lbl">Lịch sử thay đổi (người sửa, trước / sau, lý do)</span><HistoryPanel ids={[t.id]} /></div>}
       {mode === "edit" && <TaskForm init={t} onClose={() => setMode(null)} />}
     </Modal>
   );
@@ -352,15 +374,20 @@ export function TaskForm({ init = {}, onClose }) {
     setErr("");
     if (!f.title?.trim()) return setErr("Nhập tên nhiệm vụ.");
     if (f.dueDate && f.assignedDate && f.dueDate < f.assignedDate) return setErr("Hạn hoàn thành phải sau ngày giao.");
-    const keys = ["code", "title", "taskType", "planId", "packageId", "sourceDoc", "assigner", "staffId", "collaborators", "assignedDate", "dueDate", "output", "recurring", "note", "proposal", "resultTotal"];
+    if (f.recurring && !f.dueDate) return setErr("Việc định kỳ cần hạn của kỳ đầu (VD: ngày cuối tháng) để hệ thống tự tạo các kỳ sau.");
+    const keys = ["code", "title", "taskType", "planId", "packageId", "sourceDoc", "assigner", "staffId", "collaborators", "assignedDate", "dueDate", "output", "recurring", "recurrence", "note", "proposal", "resultTotal"];
     const d = Object.fromEntries(keys.map((k) => [k, f[k] === "" ? null : f[k] ?? null]));
+    if (d.recurring) { d.recurrence = d.recurrence || "monthly"; d.period = periodOf(d.dueDate, d.recurrence); }
     if (isNew) {
+      const nid = genId("nv_");
       d.code = d.code || nextCode(data.tasks || [], today);
       Object.assign(d, { originalDue: d.dueDate, dueLocked: true, status: f.status, percent: Number(f.percent) || 0, source: "Nhập trên web" });
+      if (d.recurring) d.seriesId = nid;
       if (!can.manage) d.staffId = me.id;
-      if (await write([{ table: "tasks", op: "insert", id: genId("nv_"), data: d }], `Đã giao nhiệm vụ ${d.code}`)) onClose();
+      if (await write([{ table: "tasks", op: "insert", id: nid, data: d }], `Đã giao nhiệm vụ ${d.code}`)) onClose();
       return;
     }
+    if (d.recurring && !init.seriesId) d.seriesId = init.id;
     const ch = Object.fromEntries(Object.entries(d).filter(([k, v]) => (init[k] ?? null) !== v));
     if (locked) delete ch.dueDate;
     if (!Object.keys(ch).length) return onClose();
@@ -387,7 +414,11 @@ export function TaskForm({ init = {}, onClose }) {
         {isNew && <Field label="Trạng thái ban đầu"><Sel value={f.status} onChange={set("status")}>{Object.entries(TASK_STATUS).filter(([k]) => k !== "cancelled").map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Sel></Field>}
         <Field label="Ghi chú" span={isNew ? 1 : 2}><Inp value={f.note || ""} onChange={set("note")} /></Field>
       </div>
-      <label className="row"><input type="checkbox" checked={!!f.recurring} onChange={set("recurring")} /> Nhiệm vụ thường xuyên (lặp lại)</label>
+      <div className="row">
+        <label className="row"><input type="checkbox" checked={!!f.recurring} onChange={set("recurring")} /> Việc định kỳ (tự chuyển sang kỳ sau)</label>
+        {f.recurring && <Sel style={{ width: 150 }} value={f.recurrence || "monthly"} onChange={set("recurrence")} aria-label="Chu kỳ">{Object.entries(RECURRENCE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Sel>}
+        {f.recurring && <span className="small mut">Sang kỳ mới, hệ thống tự tạo việc kỳ sau (hạn cùng ngày, giữ “cuối tháng”); việc kỳ cũ giữ nguyên trạng thái.</span>}
+      </div>
       {err && <div className="warn-note" role="alert" style={{ marginTop: 8 }}>{err}</div>}
     </Modal>
   );
@@ -410,7 +441,7 @@ function RankStats() {
   return (
     <>
       <section className="card" style={{ marginBottom: 14 }}>
-        <div className="card-h"><h2>Xếp hạng cá nhân theo số việc tồn <InfoTip text="Tồn = nhiệm vụ chưa hoàn thành + gói thầu đang tổ chức (tự động). Số liệu trạng thái, không phải đánh giá năng lực khi chưa rõ nguyên nhân." /></h2>
+        <div className="card-h"><h2>Khối lượng việc tồn theo cán bộ <InfoTip text="Tồn = nhiệm vụ chưa hoàn thành + gói thầu đang tổ chức (tự động). Số liệu trạng thái, không phải đánh giá năng lực khi chưa rõ nguyên nhân." /></h2>
           <label className="row small">Sắp xếp theo <Sel style={{ width: 200 }} value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="open">Tổng việc tồn</option><option value="overdue">Số việc quá hạn</option><option value="done">Hoàn thành trong tháng</option></Sel></label></div>
         {notRep.length > 0 && <div className="warn-note" style={{ marginBottom: 10 }}>Chưa gửi báo cáo {weekLabel(isoWeek(reportDate))}: <b>{notRep.map((x) => x.name).join(", ")}</b></div>}
         <DataTable short rows={ranking} hl={(x) => x.overdue > 0} columns={[
@@ -520,6 +551,40 @@ export function TaskOverview() {
           <Btn kind="ghost" sm onClick={() => go("canh-bao", { m: "nv" })}>Xem tất cả <ChevronRight size={14} /></Btn></div>
         {actions.length ? <ActionTable items={actions.slice(0, 8)} onOpen={(a) => go("nhiem-vu", { open: a.recordId })} /> : <Empty icon="07-closeout" title="Không có nhiệm vụ quá hạn hoặc sắp đến hạn" />}
       </section>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ Chưa giao (việc mới từ Voffice / chưa có người chủ trì)
+function Unassigned({ onOpen }) {
+  const { allTaskRows, data, can, write, today } = useApp();
+  const [pick, setPick] = useState({});
+  const rows = allTaskRows.filter((r) => !r.virtual && !r.staffId && OPEN(r.ev.code)).sort(sortRows);
+  const staff = data.staff.filter((s) => s.active !== false && rank(s.role) >= 1 && s.role !== "manager").sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const assign = async (r) => {
+    const sid = pick[r.id];
+    if (!sid) return;
+    await write([{ table: "tasks", op: "update", id: r.id, data: { staffId: sid, assignedDate: r.rec.assignedDate || today } }], `Đã giao ${r.code || ""} cho ${staffLabel(data.staff.find((s) => s.id === sid))}`);
+  };
+  return (
+    <>
+      <div className="note" style={{ marginBottom: 10 }}>
+        Nhiệm vụ chưa có người chủ trì — chủ yếu là việc mới đồng bộ từ Voffice. {can.manage ? "Chọn cán bộ rồi bấm Giao; hạn theo Voffice đã khóa, cán bộ muốn gia hạn phải gửi đề nghị để Trưởng phòng / quản trị duyệt." : "Chờ Trưởng phòng / quản trị giao việc."}
+      </div>
+      <DataTable rows={rows} empty={<Empty icon="07-closeout" title="Không có nhiệm vụ chưa giao" />} hl={(r) => r.ev.code === "overdue"} columns={[
+        { key: "c", label: "Mã", stick: true, render: (r) => <span className="code">{r.code || "—"}</span> },
+        { key: "n", label: "Nhiệm vụ", stick: true, render: (r) => <div style={{ minWidth: 280, maxWidth: 440 }}>
+          <button className="linkbtn wrap2" style={{ textAlign: "left" }} onClick={() => onOpen(r.id)}>{r.name}</button>
+          <div className="small mut wrap2" title={r.rec.sourceDoc || ""}>{r.rec.voId && <Badge tone="gray">VO {r.rec.voId}</Badge>} {r.rec.sourceDoc || r.type}</div></div> },
+        { key: "g", label: "Người giao", render: (r) => <span className="small">{r.rec.assigner || "—"}</span> },
+        { key: "a", label: "Ngày giao", render: (r) => <span className="nowrap num">{fmtD(r.rec.assignedDate)}</span> },
+        { key: "d", label: "Hạn", render: (r) => <span className="nowrap num">{fmtD(r.ev.due)}{r.rec.voExtCount ? <div className="small mut">VO gia hạn {r.rec.voExtCount} lần</div> : null}</span> },
+        { key: "e", label: "Đánh giá", render: (r) => stateBadge(r.ev) },
+        { key: "v", label: "Trạng thái VO", render: (r) => <span className="small">{r.rec.voStatus || "—"}</span> },
+        ...(can.manage ? [{ key: "x", label: "Giao cho", render: (r) => <div className="row" style={{ flexWrap: "nowrap" }}>
+          <Sel style={{ width: 190 }} value={pick[r.id] || ""} onChange={(e) => setPick({ ...pick, [r.id]: e.target.value })} aria-label={`Giao ${r.code} cho`}><option value="">— Chọn cán bộ —</option>{staff.map((s) => <option key={s.id} value={s.id}>{staffLabel(s)}</option>)}</Sel>
+          <Btn sm disabled={!pick[r.id]} onClick={() => assign(r)}>Giao</Btn></div> }] : []),
+      ]} />
     </>
   );
 }

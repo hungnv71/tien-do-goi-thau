@@ -2,6 +2,16 @@
 
 Phòng Quản lý hạ tầng - B.QLDAHTVT · ngày bàn giao 30/09/2026 · **chưa triển khai production**
 
+## 000. Bổ sung 08/10/2026 — góp ý chạy thử + đánh giá ChatGPT
+
+**CSDL (đã chạy):** `09_dinh_ky_voffice.sql` (cột việc định kỳ & Voffice, hàm `app_roll_recurring`, `app_roll_recurring_now`), `09b_lich_chuyen_ky.sql` (pg_cron 00:05 giờ VN hằng ngày).
+
+- **Việc định kỳ (Dàng):** mỗi kỳ là 1 bản ghi; sang kỳ mới hệ thống tự tạo việc kỳ sau (hạn cùng ngày, giữ "cuối tháng"), kỳ cũ giữ trạng thái thật. Chu kỳ tháng/quý/năm chọn trong form; "Dừng lặp" ở chi tiết nhiệm vụ; TP/quản trị có nút "Chuyển kỳ việc định kỳ" để chạy ngay.
+- **Hợp đồng (Túc):** không bắt buộc ngày/hồ sơ thanh lý khi đóng HĐ; chỉ nhắc thanh lý với HĐ do P.QLHT theo dõi thanh toán; thêm lựa chọn "Phòng khác thực hiện".
+- **Voffice (Ngọc):** Nhiệm vụ phòng → "Nhập từ Voffice" (file Báo cáo thực hiện nhiệm vụ đơn vị .xls) → khớp theo ID VO / tên (≥60%), việc mới vào tab **Chưa giao** để TP/quản trị giao; hạn VO khác hạn web chỉ cập nhật khi chọn (ghi lý do). Gia hạn vẫn do TP/quản trị duyệt.
+- **Tab Hợp đồng:** cột GT kế hoạch thầu, Tiết kiệm (%); Xuất Excel theo mẫu "Báo cáo các HĐ" (TỔNG HỢP + DS GÓI THẦU, có công thức).
+- **Từ đánh giá ChatGPT:** sửa mâu thuẫn "Hoàn thành đúng hạn" nhưng dòng thời gian ghi "Chậm … ngày"; cảnh báo "Ngày cần kiểm tra" (hoàn thành/nghiệm thu/thanh lý trước ngày ký); "cập nhật gần nhất" của gói tính cả mốc; lịch sử thay đổi bằng ngôn ngữ nghiệp vụ; mở hộp thoại không đặt con trỏ vào nút Xóa; ẩn bước = 0 ở biểu đồ; đổi tên "Khối lượng việc tồn theo cán bộ"; hướng dẫn quên PIN ở màn đăng nhập; Tổng quan nhớ tab đã chọn.
+
 ## 00. Bổ sung 01/10/2026 — MODULE NHIỆM VỤ PHÒNG
 
 **CSDL (đã chạy trên `cajnghfbydkzyrpgoxwq`):** `04_nhiem_vu_phong.sql` (bảng task_plans, tasks, task_updates, weekly_reports, quyền, hàm `app_weekly_digest`), `05_import_nhiem_vu_tuan40.sql` (76 nhiệm vụ từ BC_TienDo_PhongQLHT_Tuan40_2026 + TP thainn2 + 5 báo cáo tuần đã gửi; file có dữ liệu thật nên không đưa lên GitHub), `06_ke_hoach_quy3.sql` (KH "Phiếu giao nhiệm vụ Quý 03/2026", gắn 2 NV), migration `v2_07` (digest nhận thêm tham số tuần).

@@ -193,3 +193,46 @@ export function taskAlerts(rows, reportDate, cfg = {}) {
   return { action, data };
 }
 export const TASK_ALERT_LABEL = { nv_done_pct: "Hoàn thành nhưng % < 100", nv_pct_full: "100% chưa đóng việc", nv_no_report: "Lâu không báo cáo tuần" };
+
+// ------------------------------------------------------------------ việc định kỳ
+export const RECURRENCE = { monthly: "Hàng tháng", quarterly: "Hàng quý", yearly: "Hàng năm" };
+/** Kỳ của 1 ngày (khớp app__period trên máy chủ). */
+export function periodOf(iso, rec = "monthly") {
+  if (!iso) return null;
+  const y = iso.slice(0, 4), m = Number(iso.slice(5, 7));
+  return rec === "quarterly" ? `${y}-Q${Math.ceil(m / 3)}` : rec === "yearly" ? y : iso.slice(0, 7);
+}
+export const periodLabel = (p) => (!p ? "" : /^\d{4}-\d{2}$/.test(p) ? `T${Number(p.slice(5))}/${p.slice(0, 4)}` : /Q/.test(p) ? `Quý ${p.slice(6)}/${p.slice(0, 4)}` : `Năm ${p}`);
+
+// ------------------------------------------------------------------ so khớp nhiệm vụ Voffice
+export const normTitle = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const tokens = (s) => new Set(normTitle(s).split(" ").filter((w) => w.length > 1));
+/** Độ giống 2 tên nhiệm vụ (hệ số Dice theo từ, 0..1). */
+export function similarity(a, b) {
+  const A = tokens(a), B = tokens(b);
+  if (!A.size || !B.size) return 0;
+  let n = 0;
+  for (const w of A) if (B.has(w)) n++;
+  return (2 * n) / (A.size + B.size);
+}
+export const VO_STRONG = 0.6, VO_WEAK = 0.35;
+/**
+ * Mỗi dòng VO: links = NV đã gắn cùng ID VO hoặc tên giống ≥ 60% (1 việc VO có thể tách cho nhiều cán bộ);
+ * candidates = NV giống 35–60% để người nhập tự chọn; không có => việc mới (đưa vào "Chưa giao").
+ */
+export function matchVoRows(voRows, tasks) {
+  const live = tasks.filter((t) => t.status !== "cancelled");
+  return voRows.map((v) => {
+    const byId = live.filter((t) => t.voId && String(t.voId) === String(v.voId));
+    if (byId.length) return { vo: v, kind: "id", links: byId.map((t) => ({ task: t, score: 1 })), candidates: [] };
+    // so cả dòng đầu của tên (tên web hay ghi thêm "Đ/c ... chủ trì" ở dòng sau)
+    const first = (x) => String(x || "").split("\n")[0];
+    const scored = live.filter((t) => !t.voId).map((t) => ({ task: t, score: Math.max(similarity(v.title, t.title), similarity(v.title, first(t.title)), 0.9 * similarity(v.content, t.title)) }))
+      .filter((x) => x.score >= VO_WEAK).sort((a, b) => b.score - a.score);
+    const links = scored.filter((x) => x.score >= VO_STRONG);
+    return { vo: v, kind: links.length ? "name" : "new", links, candidates: scored.filter((x) => x.score < VO_STRONG).slice(0, 3) };
+  });
+}
+/** NV đã gắn VO nhưng không còn trong file "chưa đóng" => có thể đã đóng trên Voffice (chỉ thông báo, không tự đóng). */
+export const voMissing = (voRows, tasks) => { const ids = new Set(voRows.map((v) => String(v.voId))); return tasks.filter((t) => t.voId && !ids.has(String(t.voId)) && !["done", "cancelled"].includes(t.status)); };
+export const VO_STATUS_IN = { "chưa thực hiện": "not_started", "đang thực hiện": "in_progress", "đề xuất gia hạn": "in_progress", "chờ phê duyệt": "waiting", "hoàn thành": "done", "đã hoàn thành": "done" };

@@ -34,7 +34,8 @@ export function Modal({ title, sub, size = "", onClose, children, footer, labell
   useEffect(() => {
     const prev = document.activeElement;
     const el = ref.current;
-    el?.querySelector("input,select,textarea,button:not(.x)")?.focus();
+    // Đưa con trỏ vào ô nhập đầu tiên; nếu không có thì vào tiêu đề — không bao giờ mặc định vào nút (tránh bấm nhầm Xóa)
+    (el?.querySelector(".modal-b input:not([type=checkbox]):not([type=file]),.modal-b select,.modal-b textarea") || el?.querySelector("h3"))?.focus();
     const onKey = (e) => {
       if (e.key === "Escape") onClose?.();
       if (e.key === "Tab" && el) {                                     // giữ focus trong hộp thoại
@@ -51,7 +52,7 @@ export function Modal({ title, sub, size = "", onClose, children, footer, labell
     <div className="ov" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
       <div className={`modal ${size}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy} ref={ref}>
         <div className="modal-h">
-          <div><h3 id={labelledBy}>{title}</h3>{sub && <div className="small mut" style={{ marginTop: 3 }}>{sub}</div>}</div>
+          <div><h3 id={labelledBy} tabIndex={-1} style={{ outline: "none" }}>{title}</h3>{sub && <div className="small mut" style={{ marginTop: 3 }}>{sub}</div>}</div>
           <button className="x" onClick={onClose} aria-label="Đóng"><X size={18} /></button>
         </div>
         <div className="modal-b">{children}</div>

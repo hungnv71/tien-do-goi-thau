@@ -84,3 +84,29 @@ test("Xếp hạng theo việc tồn, thống kê tháng, KPI, cảnh báo dữ 
   assert.ok(kinds.includes("5:nv_no_report"));
   assert.ok(!kinds.some((x) => x.startsWith("1:nv_no_report")));
 });
+
+import { similarity, matchVoRows, voMissing, periodOf, periodLabel } from "../src/lib/tasks.js";
+test("Voffice: khớp theo ID, theo tên (1 việc VO nhiều cán bộ), việc mới, việc không còn trong VO", () => {
+  const tasks = [
+    { id: "a", title: "(NV TCT - TGĐ Hà) 118/KL-VP: Xây dựng giải pháp quản lý công trình hạ tầng ngầm, cống bể", staffId: "x", status: "in_progress" },
+    { id: "b", title: "NV TCT (TGĐ Hà): Đăng ký các chương trình đào tạo năm 2027 trên NetCareer.", staffId: "x", status: "done" },
+    { id: "c", title: "NV TCT (TGĐ Hà): Đăng ký các chương trình đào tạo năm 2027 trên NetCareer.", staffId: "y", status: "in_progress" },
+    { id: "d", title: "Việc cũ", voId: "111", status: "in_progress" },
+    { id: "e", title: "Việc VO đã khớp", voId: "222", status: "in_progress" },
+  ];
+  const vo = [
+    { voId: "222", title: "Tên khác hẳn" },
+    { voId: "861057", title: "(NV TCT - TGĐ Hà) 118/KL-VP: Xây dựng giải pháp quản lý công trình hạ tầng ngầm, cống bể - Đ/c Doanh chủ trì" },
+    { voId: "854270", title: "NV TCT (TGĐ Hà): Đăng ký các chương trình đào tạo năm 2027 trên NetCareer" },
+    { voId: "873053", title: "Hoàn thành các nội dung khóa học AI thực chiến" },
+  ];
+  const m = matchVoRows(vo, tasks);
+  assert.equal(m[0].kind, "id"); assert.deepEqual(m[0].links.map((x) => x.task.id), ["e"]);
+  assert.equal(m[1].kind, "name"); assert.deepEqual(m[1].links.map((x) => x.task.id), ["a"]);
+  assert.deepEqual(m[2].links.map((x) => x.task.id).sort(), ["b", "c"]);
+  assert.equal(m[3].kind, "new");
+  assert.deepEqual(voMissing(vo, tasks).map((t) => t.id), ["d"]);
+  assert.ok(similarity("Đăng ký đào tạo", "dang ky dao tao") === 1);
+  assert.equal(periodOf("2026-10-08"), "2026-10"); assert.equal(periodOf("2026-11-30", "quarterly"), "2026-Q4");
+  assert.equal(periodLabel("2026-10"), "T10/2026"); assert.equal(periodLabel("2026-Q4"), "Quý 4/2026");
+});

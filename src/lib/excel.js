@@ -355,3 +355,248 @@ export async function exportTasksWorkbook({ data, rows, reportDate, cfg, filters
   a.href = url; a.download = `BC_TienDo_NhiemVu_${week}.xlsx`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
+
+// ============================================================ XUẤT EXCEL HỢP ĐỒNG THEO MẪU "Báo cáo các HĐ" (TỔNG HỢP + DS GÓI THẦU)
+const HD_RED = "FFE06666", HD_PINK = "FFFDF0F0", HD_HEAD2 = "FFEFB4B4";
+export const hdStatusText = (c) => ({ cancelled: "Đã hủy", terminated: "Chấm dứt", paused: "Tạm dừng", not_started: "Đang thực hiện", in_progress: "Đang thực hiện" }[c.execStatus]
+  || (c.liquidationStatus === "done" ? "Đã thanh lý" : "Đã kết thúc"));
+const xlDate = (iso) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
+
+export async function exportContractsTracking({ data, hdRows, reportDate, cfg, filters, me, kpiKey }) {
+  const ExcelJS = await loadExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = cfg.orgName;
+  const rows = [...hdRows].sort((a, b) => String(a.rec.signDate || "9").localeCompare(String(b.rec.signDate || "9")));
+  const years = rows.map((r) => r.rec.signDate).filter(Boolean).sort();
+  const ky = years.length ? `${fmtDate(years[0])} – ${fmtDate(reportDate)}` : fmtDate(reportDate);
+  const ft = filterText(filters, data, me) + (kpiKey ? ` · Chỉ tiêu: ${kpiKey}` : "");
+  const N0 = 6, N1 = N0 + Math.max(rows.length, 1) - 1;          // dòng dữ liệu
+  const DS = "'DS GÓI THẦU'";
+  const rng = (col) => `${DS}!$${col}$${N0}:$${col}$${N1}`;
+  const vnd = (r) => (r.value.currency || "VND") === "VND";
+  const J = (r) => (vnd(r) && r.rec.signValue != null ? Number(r.rec.signValue) : null);
+  // HĐ khung / chưa có GT ký (= 0): không cộng GT KH thầu để tiết kiệm không bị thổi phồng (ghi ở Ghi chú)
+  const I = (r) => (vnd(r) && r.rec.plannedValue != null && J(r) > 0 ? Number(r.rec.plannedValue) : null);
+  const ctr = (r) => r.contractorName || "";
+  const thin2 = { style: "thin", color: { argb: "FFE3C2C2" } };
+  const bd = { top: thin2, left: thin2, bottom: thin2, right: thin2 };
+  const NUM = "#,##0;(#,##0);-", TY = "#,##0.00;(#,##0.00);-";
+
+  // ---------- TỔNG HỢP (tạo trước để đứng đầu, điền sau)
+  const th = wb.addWorksheet("TỔNG HỢP", { views: [{ state: "frozen", ySplit: 2, showGridLines: false }] });
+  // ---------- DS GÓI THẦU
+  const ds = wb.addWorksheet("DS GÓI THẦU", { views: [{ state: "frozen", ySplit: 5, xSplit: 3 }] });
+  const COLS = [["STT", 5], ["Số Hiệu\nGói Thầu", 18], ["Số Hợp Đồng", 34], ["Nội Dung\nHợp Đồng", 32], ["Tên Gói Thầu", 42], ["Loại Gói\nThầu", 16], ["Phân Loại\nDV Phi TV", 14],
+    ["Hình Thức\nLCNT", 19], ["GT Kế hoạch thầu\n(VNĐ)", 19], ["GT Hợp đồng\n(VNĐ)", 19], ["Tiết Kiệm\n(VNĐ)", 17], ["Nhà Thầu Thực Hiện", 26], ["Kiểm Tra\nNhà Thầu", 14],
+    ["Ngày Ký\nHĐ", 12], ["Năm\nKý HĐ", 8], ["Ngày HT\nDự Kiến", 12], ["Ngày HT\nThực Tế", 12], ["Tình Trạng", 16], ["Ghi Chú", 24]];
+  ds.columns = COLS.map(([, w]) => ({ width: w }));
+  ds.mergeCells(1, 1, 1, 19); ds.mergeCells(2, 1, 2, 19); ds.mergeCells(3, 1, 3, 19);
+  Object.assign(ds.getCell("A1"), { value: "BÁO CÁO KẾT QUẢ TỔ CHỨC LỰA CHỌN NHÀ THẦU" });
+  ds.getCell("A1").font = { bold: true, size: 17, color: { argb: "FFFFFFFF" } };
+  ds.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } };
+  ds.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
+  ds.getCell("A2").value = `${cfg.orgName} |  Kỳ báo cáo: ${ky}  |  Đơn vị giá trị: VNĐ  |  Bộ lọc: ${ft}`;
+  ds.getCell("A2").font = { italic: true, size: 10, color: { argb: "FF8C3B3B" } };
+  ds.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_PINK } };
+  ds.getRow(1).height = 32; ds.getRow(3).height = 6; ds.getRow(4).height = 34;
+  COLS.forEach(([h], i) => {
+    const c = ds.getCell(4, i + 1);
+    c.value = h; c.font = { bold: true, size: 10, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } };
+    c.alignment = { wrapText: true, vertical: "middle", horizontal: "center" }; c.border = bd;
+  });
+  const sumI = rows.reduce((a, r) => a + (I(r) || 0), 0), sumJ = rows.reduce((a, r) => a + (J(r) || 0), 0);
+  const hasK = (r) => I(r) != null && J(r) != null && J(r) > 0;
+  const sumK = rows.reduce((a, r) => a + (hasK(r) ? I(r) - J(r) : 0), 0);
+  const uniq = (arr) => new Set(arr.filter(Boolean)).size;
+  const sub = ds.getRow(5);
+  sub.values = ["SUBTOTAL", { formula: `SUMPRODUCT((B${N0}:B${N1}<>"")/COUNTIF(B${N0}:B${N1},B${N0}:B${N1}&""))`, result: uniq(rows.map((r) => r.code)) },
+    { formula: `SUBTOTAL(3,C${N0}:C${N1})`, result: rows.length }, "◄ Tổng theo BỘ LỌC", null, null, null, null,
+    { formula: `SUBTOTAL(9,I${N0}:I${N1})`, result: sumI }, { formula: `SUBTOTAL(9,J${N0}:J${N1})`, result: sumJ }, { formula: `SUBTOTAL(9,K${N0}:K${N1})`, result: sumK },
+    { formula: "IFERROR(K5/I5,0)", result: sumI ? sumK / sumI : 0 }, { formula: `SUMPRODUCT((L${N0}:L${N1}<>"")/COUNTIF(L${N0}:L${N1},L${N0}:L${N1}&""))`, result: uniq(rows.map(ctr)) }];
+  sub.eachCell({ includeEmpty: true }, (c, n) => {
+    if (n > 19) return;
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: n === 1 ? HD_RED : HD_PINK } };
+    c.font = { bold: true, size: 10.5, color: { argb: n === 1 ? "FFFFFFFF" : "FFB85450" } }; c.border = bd;
+  });
+  ds.getCell("B5").numFmt = '#,##0" gói"'; ds.getCell("C5").numFmt = '#,##0" HĐ"'; ds.getCell("L5").numFmt = "0.00%"; ds.getCell("M5").numFmt = '#,##0" NT"';
+  ["I5", "J5", "K5"].forEach((k) => { ds.getCell(k).numFmt = NUM; });
+  const ctrList = [...new Set(rows.map(ctr).filter(Boolean))];
+  rows.forEach((r, i) => {
+    const n = N0 + i, c = r.rec;
+    const note = [r.staff?.account || r.staffName, vnd(r) && r.rec.plannedValue != null && !(J(r) > 0) ? `GT KH thầu ${new Intl.NumberFormat("vi-VN").format(Number(r.rec.plannedValue))} — HĐ khung/chưa có GT ký, không tính tiết kiệm` : "", !vnd(r) ? `GT ${new Intl.NumberFormat("vi-VN").format(Number(c.signValue) || 0)} ${r.value.currency} — không cộng vào tổng VNĐ` : "", r.dateIssues?.length ? `Ngày cần kiểm tra: ${r.dateIssues.join("; ")}` : ""].filter(Boolean).join(" · ");
+    const row = ds.getRow(n);
+    row.values = [i + 1, r.code || null, r.no, r.name || null, c.packageName || null, r.category || null, null, c.selectionMethod || null, I(r), J(r),
+      { formula: `IF(OR(I${n}="",J${n}="",J${n}=0),"",I${n}-J${n})`, result: hasK(r) ? I(r) - J(r) : "" }, ctr(r) || null,
+      { formula: `IF($L${n}="","",IFERROR(VLOOKUP($L${n},'TỔNG HỢP'!$B$${0}:$B$${0},1,FALSE),"⚠ CHƯA CÓ Ở TỔNG HỢP"))`, result: ctr(r) || "" },
+      xlDate(c.signDate), c.signDate ? { formula: `YEAR(N${n})`, result: Number(c.signDate.slice(0, 4)) } : null, xlDate(r.due.currentDue), xlDate(c.actualCompletionDate), hdStatusText(c), note || null];
+    row.eachCell({ includeEmpty: true }, (cell, k) => {
+      if (k > 19) return;
+      cell.border = bd; cell.font = { size: 9.5 }; cell.alignment = { vertical: "top", wrapText: [3, 4, 5, 12, 19].includes(k) };
+      if ([9, 10, 11].includes(k)) cell.numFmt = "#,##0";
+      if ([14, 16, 17].includes(k)) cell.numFmt = "dd/mm/yyyy";
+    });
+    const st = row.getCell(18);
+    const tone = { "Đang thực hiện": ["FF1565C0", "FFE3F2FD"], "Đã kết thúc": ["FF2E7D32", "FFE8F5E9"], "Đã thanh lý": ["FF6A1B9A", "FFF3E5F5"] }[st.value];
+    if (tone) { st.font = { size: 9.5, bold: true, color: { argb: tone[0] } }; st.fill = { type: "pattern", pattern: "solid", fgColor: { argb: tone[1] } }; }
+    if (r.progress.code === "overdue") row.getCell(16).font = { size: 9.5, bold: true, color: { argb: "FFB91C1C" } };
+  });
+  ds.autoFilter = { from: { row: 4, column: 1 }, to: { row: N1, column: 19 } };
+
+  // ---------- TỔNG HỢP: thẻ + 5 bảng phân loại (công thức liên kết DS GÓI THẦU, kèm giá trị tính sẵn)
+  th.columns = [{ width: 4 }, { width: 46 }, { width: 11 }, { width: 11 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 11 }, { width: 11 }, { width: 13 }, { width: 10 }];
+  th.mergeCells("B1:K1"); th.mergeCells("B2:K2");
+  th.getCell("B1").value = `BÁO CÁO TỔNG HỢP KẾT QUẢ LỰA CHỌN NHÀ THẦU`;
+  th.getCell("B1").font = { bold: true, size: 19, color: { argb: "FFFFFFFF" } };
+  th.getCell("B1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } };
+  th.getCell("B1").alignment = { vertical: "middle", horizontal: "center" };
+  th.getRow(1).height = 34;
+  th.getCell("B2").value = `${cfg.orgName}   |   Kỳ báo cáo: ${ky}   |   Đơn vị giá trị: tỷ đồng   |   Số liệu liên kết động từ sheet 'DS GÓI THẦU'   |   Bộ lọc: ${ft}`;
+  th.getCell("B2").font = { size: 10, color: { argb: "FF8C3B3B" } };
+  th.getCell("B2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_PINK } };
+  const ty9 = (v) => Math.round((v / 1e9) * 100) / 100;
+  const cards = [["B", "C", "TỔNG GÓI THẦU", uniq(rows.map((r) => r.code)), NUM, "gói (không trùng số hiệu)"], ["D", "E", "TỔNG HỢP ĐỒNG", rows.length, NUM, "hợp đồng"],
+    ["F", "G", "GT KẾ HOẠCH THẦU", ty9(sumI), TY, "tỷ đồng"], ["H", "I", "GT TRÚNG THẦU", ty9(sumJ), TY, "tỷ đồng"],
+    ["J", "K", "TIẾT KIỆM", ty9(sumK), TY, `tỷ đồng (tiết kiệm ${sumI ? Math.round((sumK / sumI) * 10000) / 100 : 0}%)`]];
+  for (const [a, b, lb, v, fmt, unit] of cards) {
+    th.mergeCells(`${a}4:${b}4`); th.mergeCells(`${a}5:${b}6`); th.mergeCells(`${a}7:${b}7`);
+    Object.assign(th.getCell(`${a}4`), { value: lb });
+    th.getCell(`${a}4`).font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
+    th.getCell(`${a}4`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } };
+    th.getCell(`${a}4`).alignment = { horizontal: "center" };
+    th.getCell(`${a}5`).value = v; th.getCell(`${a}5`).numFmt = fmt;
+    th.getCell(`${a}5`).font = { bold: true, size: 22, color: { argb: "FFB85450" } };
+    th.getCell(`${a}5`).alignment = { horizontal: "center", vertical: "middle" };
+    th.getCell(`${a}7`).value = unit; th.getCell(`${a}7`).font = { size: 8.5, color: { argb: "FF777777" } };
+    th.getCell(`${a}7`).alignment = { horizontal: "center" };
+  }
+  let rowN = 9;
+  const sectionHead = (title) => {
+    th.mergeCells(`B${rowN}:K${rowN}`);
+    const c = th.getCell(`B${rowN}`); c.value = title; c.font = { bold: true, size: 13, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } }; rowN++;
+  };
+  const head2 = (cells) => {
+    const r = th.getRow(rowN); r.values = [null, ...cells]; r.height = 30;
+    r.eachCell((c, k) => { if (k < 2) return; c.font = { bold: true, size: 9.5 }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_HEAD2 } }; c.alignment = { wrapText: true, horizontal: "center", vertical: "middle" }; c.border = bd; });
+    rowN++;
+  };
+  const group = (keyFn) => { const m = new Map(); for (const r of rows) { const k = keyFn(r); if (k == null || k === "") continue; m.set(k, [...(m.get(k) || []), r]); } return m; };
+  const block = (title, colLetter, keyFn, label, order) => {
+    sectionHead(title);
+    head2([label, "Số gói", "Số HĐ", "GT KH thầu\n(tỷ đ)", "GT trúng\n(tỷ đ)", "Tiết kiệm\n(tỷ đ)", "% Tiết\nkiệm", "Tỷ trọng\nGT trúng", "GT TB\n/HĐ"]);
+    const g = group(keyFn);
+    const keys = order ? order.filter((k) => g.has(k)).concat([...g.keys()].filter((k) => !order.includes(k))) : [...g.keys()];
+    const first = rowN, totalRow = first + keys.length;
+    for (const k of keys) {
+      const rs = g.get(k), n = rowN;
+      const si = rs.reduce((a, r) => a + (I(r) || 0), 0), sj = rs.reduce((a, r) => a + (J(r) || 0), 0);
+      const crit = typeof k === "number" ? `$B${n}` : `$B${n}`;
+      th.getRow(n).values = [null, k, uniq(rs.map((r) => r.code)),
+        { formula: `COUNTIF(${rng(colLetter)},${crit})`, result: rs.length },
+        { formula: `SUMIF(${rng(colLetter)},${crit},${rng("I")})/10^9`, result: si / 1e9 },
+        { formula: `SUMIF(${rng(colLetter)},${crit},${rng("J")})/10^9`, result: sj / 1e9 },
+        { formula: `E${n}-F${n}`, result: (si - sj) / 1e9 }, { formula: `IFERROR(G${n}/E${n},0)`, result: si ? (si - sj) / si : 0 },
+        { formula: `IFERROR(F${n}/F$${totalRow},0)`, result: sumJ ? sj / sumJ : 0 }, { formula: `IFERROR(F${n}/D${n},0)`, result: rs.length ? sj / 1e9 / rs.length : 0 }];
+      rowN++;
+    }
+    const n = rowN, L = (c) => `${c}${first}:${c}${totalRow - 1}`;
+    th.getRow(n).values = [null, "TỔNG CỘNG", { formula: `SUM(${L("C")})`, result: keys.reduce((a, k) => a + uniq(g.get(k).map((r) => r.code)), 0) },
+      { formula: `SUM(${L("D")})`, result: keys.reduce((a, k) => a + g.get(k).length, 0) }, { formula: `SUM(${L("E")})`, result: sumI / 1e9 }, { formula: `SUM(${L("F")})`, result: sumJ / 1e9 },
+      { formula: `SUM(${L("G")})`, result: (sumI - sumJ) / 1e9 }, { formula: `IFERROR(G${n}/E${n},0)`, result: sumI ? (sumI - sumJ) / sumI : 0 },
+      { formula: `SUM(${L("I")})`, result: 1 }, { formula: `IFERROR(F${n}/D${n},0)`, result: rows.length ? sumJ / 1e9 / rows.length : 0 }];
+    for (let k = first; k <= n; k++) {
+      th.getRow(k).eachCell({ includeEmpty: true }, (c, col) => {
+        if (col < 2 || col > 10) return;
+        c.border = bd; c.font = { size: k === n ? 11 : 10, bold: k === n || col === 8 };
+        c.numFmt = [3, 4].includes(col) ? NUM : [5, 6, 7, 10].includes(col) ? TY : col === 8 ? "0.00%" : col === 9 ? "0.0%" : "General";
+        if (k === n) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_PINK } };
+      });
+    }
+    rowN += 2;
+  };
+  block("A.  PHÂN LOẠI THEO LOẠI GÓI THẦU", "F", (r) => r.category, "Loại gói thầu", ["Xây lắp", "Tư vấn", "Dịch vụ phi tư vấn"]);
+  block("B.  PHÂN LOẠI THEO NĂM KÝ HỢP ĐỒNG", "O", (r) => (r.rec.signDate ? Number(r.rec.signDate.slice(0, 4)) : null), "Năm ký hợp đồng", years.map((y) => Number(y.slice(0, 4))).filter((v, i, a) => a.indexOf(v) === i));
+  block("C.  PHÂN LOẠI THEO HÌNH THỨC LỰA CHỌN NHÀ THẦU", "H", (r) => r.rec.selectionMethod, "Hình thức LCNT", ["Đấu thầu rộng rãi", "Chào hàng cạnh tranh", "Chỉ định thầu", "Mua sắm trực tiếp"]);
+  block("D.  PHÂN LOẠI THEO TÌNH TRẠNG THỰC HIỆN HỢP ĐỒNG", "R", (r) => hdStatusText(r.rec), "Tình trạng", ["Đang thực hiện", "Đã kết thúc", "Đã thanh lý", "Tạm dừng", "Chấm dứt", "Đã hủy"]);
+  // E. theo nhà thầu (xếp theo GT trúng)
+  sectionHead("E.  PHÂN LOẠI THEO NHÀ THẦU THỰC HIỆN");
+  head2(["Nhà thầu thực hiện", "Số HĐ", "GT KH thầu\n(tỷ đ)", "GT trúng\n(tỷ đ)", "Tiết kiệm\n(tỷ đ)", "% Tiết\nkiệm", "Tỷ trọng\nGT trúng", "GT TB\n/HĐ", "STT\n(xếp hạng)"]);
+  const gc = group(ctr);
+  const ckeys = [...gc.keys()].sort((a, b) => gc.get(b).reduce((s, r) => s + (J(r) || 0), 0) - gc.get(a).reduce((s, r) => s + (J(r) || 0), 0));
+  const e0 = rowN, eTot = e0 + ckeys.length;
+  ckeys.forEach((k, i) => {
+    const rs = gc.get(k), n = rowN, si = rs.reduce((a, r) => a + (I(r) || 0), 0), sj = rs.reduce((a, r) => a + (J(r) || 0), 0);
+    th.getRow(n).values = [null, k, { formula: `COUNTIF(${rng("L")},$B${n})`, result: rs.length },
+      { formula: `SUMIF(${rng("L")},$B${n},${rng("I")})/10^9`, result: si / 1e9 }, { formula: `SUMIF(${rng("L")},$B${n},${rng("J")})/10^9`, result: sj / 1e9 },
+      { formula: `D${n}-E${n}`, result: (si - sj) / 1e9 }, { formula: `IFERROR(F${n}/D${n},0)`, result: si ? (si - sj) / si : 0 },
+      { formula: `IFERROR(E${n}/E$${eTot},0)`, result: sumJ ? sj / sumJ : 0 }, { formula: `IFERROR(E${n}/C${n},0)`, result: sj / 1e9 / rs.length }, i + 1];
+    rowN++;
+  });
+  th.getRow(rowN).values = [null, "TỔNG CỘNG", { formula: `SUM(C${e0}:C${eTot - 1})`, result: rows.filter((r) => ctr(r)).length },
+    { formula: `SUM(D${e0}:D${eTot - 1})`, result: sumI / 1e9 }, { formula: `SUM(E${e0}:E${eTot - 1})`, result: sumJ / 1e9 }, { formula: `D${rowN}-E${rowN}`, result: (sumI - sumJ) / 1e9 },
+    { formula: `IFERROR(F${rowN}/D${rowN},0)`, result: sumI ? (sumI - sumJ) / sumI : 0 }, null, null, null];
+  for (let k = e0; k <= rowN; k++) th.getRow(k).eachCell({ includeEmpty: true }, (c, col) => {
+    if (col < 2 || col > 10) return;
+    c.border = bd; c.font = { size: k === rowN ? 11 : 10, bold: k === rowN };
+    c.numFmt = [3, 10].includes(col) ? NUM : [4, 5, 6, 9].includes(col) ? TY : col === 7 ? "0.00%" : col === 8 ? "0.0%" : "General";
+    if (k === rowN) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_PINK } };
+  });
+  // cột "Kiểm tra nhà thầu" ở DS tra trong danh sách nhà thầu của TỔNG HỢP
+  rows.forEach((r, i) => { const cell = ds.getCell(N0 + i, 13); cell.value = { formula: cell.value.formula.replace("$B$0:$B$0", `$B$${e0}:$B$${Math.max(e0, eTot - 1)}`), result: ctr(r) || "" }; });
+  th.getCell(`B${rowN + 2}`).value = "Ghi chú: Tiết kiệm = GT kế hoạch thầu − GT hợp đồng (giá trị ký ban đầu). HĐ khung / chưa có GT ký và HĐ ngoại tệ không cộng vào tổng VNĐ (ghi ở cột Ghi chú). Số gói đếm theo số hiệu không trùng.";
+  th.getCell(`B${rowN + 2}`).font = { italic: true, size: 9, color: { argb: "FF777777" } };
+
+  // ---------- Gia hạn (giữ chi tiết như bản cũ)
+  const ext = rows.flatMap((r) => r.due.all.map((e) => ({ r, e })));
+  if (ext.length) sheet(wb, "Gia hạn", "DANH SÁCH GIA HẠN HỢP ĐỒNG", `${cfg.orgName} · Ngày báo cáo ${fmtDate(reportDate)}`, [
+    { h: "Số HĐ", w: 30, v: (x) => x.r.no }, { h: "Lần", w: 6, num: true, v: (x) => x.e.seq }, { h: "Số phụ lục/VB", w: 20, v: (x) => x.e.docNo },
+    { h: "Hiệu lực", w: 12, v: (x) => fmtDate(x.e.effectiveDate || x.e.signDate) }, { h: "Hạn trước", w: 12, v: (x) => fmtDate(x.e.dueBefore) },
+    { h: "Hạn sau", w: 12, v: (x) => fmtDate(x.e.dueAfter) }, { h: "Trạng thái", w: 13, v: (x) => EXT_STATUS[x.e.status] }, { h: "Lý do", w: 40, v: (x) => x.e.reason },
+  ], ext);
+
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = `Bao_cao_cac_HD_${reportDate}.xlsx`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// ============================================================ NHẬP NHIỆM VỤ TỪ VOFFICE (file "bao_cao_nhiem_vu_chua_dong_don_vi_*.xls")
+export async function parseVoffice(file) {
+  const XLSX = await loadXLSX();
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+  const hi = aoa.findIndex((r) => r.some((c) => /id\s*nhiệm\s*vụ/i.test(String(c))) && r.some((c) => /tên\s*nhiệm\s*vụ/i.test(String(c))));
+  if (hi < 0) throw new Error("Không nhận ra file Voffice: cần cột “ID nhiệm vụ” và “Tên nhiệm vụ” (file Báo cáo thực hiện nhiệm vụ đơn vị).");
+  const head = aoa[hi].map((h) => String(h).replace(/\s+/g, " ").trim().toLowerCase());
+  const exact = (name) => head.findIndex((h) => h === name);
+  const C = {
+    id: col(head, "id nhiệm vụ"), src: col(head, "nguồn gốc"), title: col(head, "tên nhiệm vụ"), content: col(head, "nội dung"), target: col(head, "mục tiêu"),
+    start: col(head, "ngày thực hiện"), due: exact("ngày hoàn thành") >= 0 ? exact("ngày hoàn thành") : col(head, "ngày hoàn thành"), ext: col(head, "gia hạn"),
+    owner: col(head, "đầu mối"), status: col(head, "trạng thái"), result: col(head, "kết quả"), level: col(head, "mức độ"), diff: col(head, "khó khăn"),
+    prop: col(head, "đề xuất"), assigner: col(head, "người giao"), upd: col(head, "ngày cập nhật"), kind: col(head, "loại nhiệm vụ"),
+  };
+  const subHead = (aoa[hi + 1] || []).some((c) => /số lần|mốc cũ|họ tên/i.test(String(c)));
+  const rows = [], errors = [];
+  const meta = { date: null, total: null };
+  for (const r of aoa.slice(0, hi)) { const t = r.map((x) => String(x)).join(" "); const m = t.match(/ngày chốt[^0-9]*(\d{1,2}\/\d{1,2}\/\d{4})/i); if (m) meta.date = parseDateCell(m[1]); }
+  aoa.slice(hi + (subHead ? 2 : 1)).forEach((r, i) => {
+    const line = hi + (subHead ? 3 : 2) + i;
+    const id = s(r[C.id]);
+    if (!id && !s(r[C.title])) return;
+    if (!id) return errors.push({ line, msg: "Thiếu ID nhiệm vụ" });
+    const d = (k) => (C[k] >= 0 ? parseDateCell(r[C[k]]) : null);
+    const due = d("due"), start = d("start");
+    if (due === undefined || start === undefined) errors.push({ line, msg: "Ngày không đọc được" });
+    rows.push({
+      line, voId: id.replace(/\.0$/, ""), source: s(r[C.src]), title: s(r[C.title]), content: s(r[C.content]), target: s(r[C.target]),
+      start: start || null, due: due || null, extCount: C.ext >= 0 ? Number(r[C.ext]) || 0 : 0, oldDue: C.ext >= 0 ? parseDateCell(r[C.ext + 1]) || null : null,
+      owner: C.owner >= 0 ? s(r[C.owner]) : "", status: s(r[C.status]), result: s(r[C.result]), level: s(r[C.level]), difficulty: s(r[C.diff]), proposal: s(r[C.prop]),
+      assigner: s(r[C.assigner]), kind: s(r[C.kind]),
+    });
+  });
+  if (!rows.length) throw new Error("File không có dòng nhiệm vụ nào.");
+  return { rows, errors, meta };
+}
