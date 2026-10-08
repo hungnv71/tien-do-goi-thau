@@ -248,3 +248,15 @@ test("HĐ đã thanh lý = đã hoàn thành: không quá hạn, không còn đa
   // có ngày hoàn thành thực tế: vẫn đánh giá đúng / chậm theo ngày hoàn thành
   assert.equal(contractProgress({ ...c, actualCompletionDate: "2025-03-20" }, [], "2026-10-08").code, "done_late");
 });
+
+test("Tổng HĐ đã ký không giảm khi đóng / thanh lý HĐ; HĐ hủy không tính", async () => {
+  const { HD_TOTAL_KPI } = await import("../src/lib/rules.js");
+  const C = (id, x) => ({ id, contractNo: id, signDate: "2026-01-01", originalDue: "2026-12-31", signValue: 1e9, currency: "VND", execStatus: "in_progress", liquidationStatus: "none", ...x });
+  const before = { ...emptyData(), contracts: [C("a"), C("b"), C("c", { execStatus: "cancelled" })] };
+  const after = { ...emptyData(), contracts: [C("a", { liquidationStatus: "done" }), C("b", { execStatus: "completed", actualCompletionDate: "2026-06-01" }), C("c", { execStatus: "cancelled" })] };
+  const k = (d) => Object.fromEntries(computeKpis([...HD_TOTAL_KPI, ...HD_KPI], buildContractRows(d, "2026-10-08", cfg), { reportDate: "2026-10-08", cfg }).map((x) => [x.key, x.value]));
+  const kb = k(before), ka = k(after);
+  assert.deepEqual([kb.hd_signed, kb.hd_signed_value], [2, 2e9]);
+  assert.deepEqual([ka.hd_signed, ka.hd_signed_value], [2, 2e9], "đóng HĐ không làm giảm tổng đã ký");
+  assert.deepEqual([kb.hd_active, ka.hd_active, ka.hd_done, ka.hd_done_value], [2, 0, 2, 2e9]);
+});

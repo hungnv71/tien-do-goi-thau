@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LabelList } from "recharts";
 import { Download, ChevronRight } from "lucide-react";
 import { useApp } from "../lib/store.jsx";
-import { LCNT_KPI, HD_KPI, computeKpis, PKG_STATUS, HD_PROGRESS, STAGES, EXEC_STATUS, daysText, ALERT_LABEL, MODULE_LABEL, MODULE_PAGE } from "../lib/rules.js";
+import { LCNT_KPI, HD_KPI, HD_TOTAL_KPI, computeKpis, PKG_STATUS, HD_PROGRESS, STAGES, EXEC_STATUS, daysText, ALERT_LABEL, MODULE_LABEL, MODULE_PAGE } from "../lib/rules.js";
 import { fmtDate } from "../lib/dates.js";
 import { Banner, Btn, Icon3D, Badge, fmtD, ty, Empty, InfoTip, Progress } from "../components/ui.jsx";
 import FilterBar, { PastDateNote } from "../components/FilterBar.jsx";
@@ -39,6 +39,7 @@ export default function Dashboard() {
       <PastDateNote />
       {mod === "nv" ? <TaskOverview /> : <>
 
+      {mod === "hd" && <HdTotals rows={hdRows} ctx={ctx} onPick={(key) => go("hop-dong", { kpi: key })} />}
       <section className="kpis" aria-label="Chỉ tiêu tổng quan">
         {kpis.map((k) => (
           <button key={k.key} className="kpi" onClick={() => go(mod === "hd" ? "hop-dong" : "lcnt", { kpi: k.key })} title={`${k.hint}. Bấm để xem danh sách.`}>
@@ -75,6 +76,26 @@ export default function Dashboard() {
       </section>
       </>}
     </>
+  );
+}
+
+/** Dải tổng HĐ đã ký: không giảm khi mọi người đóng / thanh lý HĐ. */
+function HdTotals({ rows, ctx, onPick }) {
+  const k = Object.fromEntries(computeKpis([...HD_TOTAL_KPI, ...HD_KPI], rows, ctx).map((x) => [x.key, x]));
+  const blocks = [
+    ["Tổng HĐ đã ký", k.hd_signed, k.hd_signed_value, "hd_signed", "var(--blue)"],
+    ["Đã hoàn thành / thanh lý", k.hd_done, k.hd_done_value, "hd_done", "var(--green)"],
+    ["Đang thực hiện", k.hd_active, k.hd_value, "hd_active", "var(--text)"],
+  ];
+  return (
+    <section className="hd-totals" aria-label="Tổng hợp đồng đã ký">
+      {blocks.map(([lb, n, v, key, color], i) => (
+        <button key={key} className={`hd-total ${i === 0 ? "main" : ""}`} onClick={() => onPick(key)} title={`${n.hint}. Bấm để xem danh sách.`}>
+          <span className="lbl">{lb}</span>
+          <span className="big" style={{ color }}>{n.value} <small>HĐ</small></span>
+          <span className="val">{ty(v.value)} VNĐ</span>
+        </button>))}
+    </section>
   );
 }
 
@@ -171,7 +192,9 @@ function LcntCharts({ rows }) {
 function HdCharts({ rows }) {
   const act = rows.filter((r) => r.active);
   const staff = byStaff(act, (r) => r.progress.code);
-  const exec = Object.entries(EXEC_STATUS).map(([k, v]) => ({ name: v, value: rows.filter((r) => r.rec.execStatus === k).length })).filter((x) => x.value);
+  // Đã thanh lý tính riêng (kể cả khi trạng thái thực hiện chưa được chuyển)
+  const stOf = (r) => (r.rec.liquidationStatus === "done" && !["cancelled", "terminated"].includes(r.rec.execStatus) ? "liquidated" : r.rec.execStatus);
+  const exec = [...Object.entries(EXEC_STATUS), ["liquidated", "Đã thanh lý"]].map(([k, v]) => ({ name: v, value: rows.filter((r) => stOf(r) === k).length })).filter((x) => x.value);
   const paid = rows.filter((r) => r.pay.tracked && r.pay.hasData && r.value.current > 0 && r.value.currency === "VND")
     .map((r) => ({ name: r.no.length > 18 ? r.no.slice(0, 18) + "…" : r.no, full: r.no, value: Math.round(r.value.current / 1e7) / 100, paid: Math.round(r.pay.paid / 1e7) / 100 })).slice(0, 10);
   return (

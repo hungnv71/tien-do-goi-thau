@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Download } from "lucide-react";
 import { useApp } from "../lib/store.jsx";
-import { LCNT_KPI, HD_KPI, computeKpis } from "../lib/rules.js";
+import { LCNT_KPI, HD_KPI, HD_TOTAL_KPI, computeKpis } from "../lib/rules.js";
 import { fmtDate } from "../lib/dates.js";
 import { Banner, Btn, DataTable, ty, Empty } from "../components/ui.jsx";
 import FilterBar, { PastDateNote } from "../components/FilterBar.jsx";
@@ -14,7 +14,7 @@ const vndSum = (rs) => rs.filter((r) => r.value.currency === "VND" && r.value.cu
 export default function Reports() {
   const { pkgRows, hdRows, alerts, data, reportDate, cfg, filters, me } = useApp();
   const ctx = { reportDate, cfg };
-  const lk = computeKpis(LCNT_KPI, pkgRows, ctx), hk = computeKpis(HD_KPI, hdRows, ctx);
+  const lk = computeKpis(LCNT_KPI, pkgRows, ctx), hk = computeKpis([...HD_TOTAL_KPI, ...HD_KPI], hdRows, ctx);
   const byStaff = useMemo(() => {
     const names = [...new Set([...pkgRows, ...hdRows].map((r) => r.staffName))];
     return names.map((n) => {

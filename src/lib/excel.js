@@ -4,7 +4,7 @@ const loadExcelJS = () => import("exceljs").then((m) => m.default || m);
 const loadXLSX = () => import("xlsx");
 import { fmtDate, parseDateCell } from "./dates.js";
 import * as T from "./tasks.js";
-import { PKG_STATUS, HD_PROGRESS, EXEC_STATUS, ACC_STATUS, LIQ_STATUS, PAY_OWNER, EXT_STATUS, ALERT_LABEL, LCNT_KPI, HD_KPI, computeKpis, daysText, staffLabel, byPos, STATUS_OPTIONS } from "./rules.js";
+import { PKG_STATUS, HD_PROGRESS, EXEC_STATUS, ACC_STATUS, LIQ_STATUS, PAY_OWNER, EXT_STATUS, ALERT_LABEL, LCNT_KPI, HD_KPI, HD_TOTAL_KPI, computeKpis, daysText, staffLabel, byPos, STATUS_OPTIONS } from "./rules.js";
 
 const RED = "FFEE0033", DARK = "FF172033", ZEBRA = "FFF6F8FC";
 const thin = { style: "thin", color: { argb: "FFD5DBE5" } };
@@ -70,7 +70,7 @@ export async function exportWorkbook({ data, pkgRows = [], hdRows = [], alerts, 
   info.addRow([]);
   const hk = info.addRow(["Chỉ tiêu", "Giá trị", "Định nghĩa"]); hk.font = { bold: true };
   if (pkgRows.length) computeKpis(LCNT_KPI, pkgRows, ctx).forEach((k) => info.addRow([`LCNT · ${k.label.replace("N ngày", cfg.dueSoonDays + " ngày")}`, k.value, k.hint]));
-  if (hdRows.length) computeKpis(HD_KPI, hdRows, ctx).forEach((k) => info.addRow([`HĐ · ${k.label.replace("N ngày", cfg.contractSoonDays + " ngày")}`, k.value, k.hint]));
+  if (hdRows.length) computeKpis([...HD_TOTAL_KPI, ...HD_KPI], hdRows, ctx).forEach((k) => info.addRow([`HĐ · ${k.label.replace("N ngày", cfg.contractSoonDays + " ngày")}`, k.value, k.hint]));
   info.addRow([]);
   [
     ["Quá hạn", "Chưa hoàn thành và ngày báo cáo > hạn áp dụng; số ngày chậm = chênh lệch ngày lịch."],

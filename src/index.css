@@ -211,3 +211,13 @@ a { color: var(--brand-d); }
 .close-box { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 14px; border: 2px dashed var(--green); background: var(--green-bg); border-radius: 12px; }
 .close-box.on { border-style: solid; box-shadow: 0 0 0 3px rgb(21 128 61 / 12%); }
 .close-box input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--green); }
+
+/* Dải tổng HĐ đã ký (Tổng quan › Hợp đồng) */
+.hd-totals { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.hd-total { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 18px; cursor: pointer; }
+.hd-total.main { border: 2px solid var(--blue); background: var(--blue-bg); }
+.hd-total .lbl { margin: 0; font-size: 12.5px; text-transform: uppercase; letter-spacing: .3px; }
+.hd-total .big { font-size: 30px; font-weight: 800; line-height: 1.1; }
+.hd-total .big small { font-size: 15px; font-weight: 600; color: var(--muted); }
+.hd-total .val { font-size: 18px; font-weight: 700; color: var(--text); }
+@media (max-width: 900px) { .hd-totals { grid-template-columns: 1fr; } }

@@ -299,6 +299,16 @@ export const LCNT_KPI = [
   { key: "lcnt_signed", label: "Ký HĐ trong tháng", icon: "02-contract", tone: "blue", hint: "Mốc ký HĐ hoàn thành trong tháng của ngày báo cáo", test: (r, ctx) => !!r.ev.signedOn && monthKey(r.ev.signedOn) === monthKey(ctx.reportDate) },
   { key: "lcnt_missing", label: "Thiếu hạn / người phụ trách", icon: "08-responsibility", tone: "gray", hint: "Bước hiện tại chưa có hạn, hoặc gói chưa có cán bộ phụ trách", test: (r) => PKG_OPEN(r) && (r.ev.code === "no_due" || !r.staffId || r.ev.code === "no_milestones") },
 ];
+const HD_SIGNED = (r) => r.rec.execStatus !== "cancelled";
+const HD_DONE = (r) => HD_SIGNED(r) && !r.active && ["done", "done_late", "done_nodate"].includes(r.progress.code);
+const VND_VAL = (r) => r.value.current !== null && r.value.currency === "VND";
+/** Tổng các HĐ đã ký — KHÔNG giảm khi đóng / thanh lý HĐ (chỉ loại HĐ đã hủy). */
+export const HD_TOTAL_KPI = [
+  { key: "hd_signed", label: "Tổng HĐ đã ký", icon: "02-contract", tone: "blue", hint: "Tất cả HĐ đã ký (đang thực hiện + đã hoàn thành / thanh lý), không tính HĐ đã hủy", test: HD_SIGNED },
+  { key: "hd_signed_value", label: "Tổng giá trị HĐ đã ký", icon: "05-payment", tone: "money", hint: "Tổng giá trị hiện hành (VND) của tất cả HĐ đã ký, không tính HĐ hủy và HĐ ngoại tệ", test: (r) => HD_SIGNED(r) && VND_VAL(r), money: true },
+  { key: "hd_done", label: "Đã hoàn thành / thanh lý", icon: "07-closeout", hint: "HĐ đã hoàn thành thực hiện hoặc đã thanh lý", test: HD_DONE },
+  { key: "hd_done_value", label: "Giá trị HĐ đã hoàn thành / thanh lý", icon: "07-closeout", tone: "money", hint: "Tổng giá trị hiện hành (VND) của HĐ đã hoàn thành / thanh lý", test: (r) => HD_DONE(r) && VND_VAL(r), money: true },
+];
 export const HD_KPI = [
   { key: "hd_active", label: "Đang thực hiện", icon: "02-contract", hint: "Trạng thái thực hiện: chưa bắt đầu / đang thực hiện / tạm dừng", test: (r) => r.active },
   { key: "hd_overdue", label: "Quá hạn thực hiện", icon: "03-deadline", tone: "red", hint: "Chưa hoàn thành và ngày báo cáo > hạn hiện hành", test: (r) => r.progress.code === "overdue" },
@@ -307,7 +317,7 @@ export const HD_KPI = [
   { key: "hd_liq", label: "Chờ thanh lý", icon: "07-closeout", hint: "Đã hoàn thành, chưa thanh lý — chỉ HĐ do P.QLHT theo dõi thanh toán/thanh lý", test: (r) => ["done", "done_late", "done_nodate"].includes(r.progress.code) && liqTracked(r.rec) && r.rec.liquidationStatus !== "done" },
   { key: "hd_value", label: "Giá trị HĐ đang thực hiện", icon: "05-payment", tone: "money", hint: "Tổng giá trị hiện hành (VND) của HĐ đang thực hiện; không cộng gói thầu, không cộng ngoại tệ", test: (r) => r.active && r.value.current !== null && r.value.currency === "VND", money: true },
 ];
-export const KPI_BY_KEY = Object.fromEntries([...LCNT_KPI, ...HD_KPI].map((k) => [k.key, k]));
+export const KPI_BY_KEY = Object.fromEntries([...LCNT_KPI, ...HD_TOTAL_KPI, ...HD_KPI].map((k) => [k.key, k]));
 
 export function computeKpis(defs, rows, ctx) {
   return defs.map((k) => {
