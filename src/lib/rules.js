@@ -48,8 +48,11 @@ export function savingOf(c) {
   return { planned: p, saving: p - s, pct: Math.round(((p - s) / p) * 10000) / 100 };
 }
 /** Ngày bất thường: hoàn thành / nghiệm thu / thanh lý trước ngày ký — cần đối chiếu hồ sơ, không tự sửa. */
+const validDate = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")) && d >= "1990-01-01" && d <= "2100-12-31";
 export function dateIssues(c) {
   const out = [];
+  for (const [f, lb] of [["signDate", "Ngày ký"], ["actualCompletionDate", "Hoàn thành thực tế"], ["acceptanceDate", "Nghiệm thu"], ["liquidationDate", "Thanh lý"], ["originalDue", "Hạn hoàn thành"]])
+    if (c[f] && !validDate(c[f])) out.push(`${lb} sai định dạng (${c[f]})`);
   if (!c.signDate) return out;
   for (const [f, lb] of [["actualCompletionDate", "Hoàn thành thực tế"], ["acceptanceDate", "Nghiệm thu"], ["liquidationDate", "Thanh lý"], ["originalDue", "Hạn hoàn thành"]]) if (c[f] && c[f] < c.signDate) out.push(`${lb} (${c[f].split("-").reverse().join("/")}) trước ngày ký`);
   return out;
@@ -164,7 +167,10 @@ export function contractDue(c, allExt, asOf) {
 export function contractProgress(c, allExt, reportDate, cfg = DEFAULT_CFG) {
   if (c.execStatus === "cancelled") return { code: "cancelled" };
   if (c.execStatus === "terminated") return { code: "terminated" };
+  // Đã thanh lý = đã hoàn thành (kể cả khi trạng thái thực hiện chưa chuyển); thiếu ngày HT thì lấy ngày thanh lý
+  const liq = c.liquidationStatus === "done";
   const doneOn = c.actualCompletionDate && c.actualCompletionDate <= reportDate ? c.actualCompletionDate : null;
+  if (liq && !doneOn && (!validDate(c.liquidationDate) || c.liquidationDate <= reportDate)) return { code: "done_nodate", liquidated: true };
   if (doneOn) {
     const dueAtDone = contractDue(c, allExt, doneOn);
     const ref = dueAtDone.currentDue;
@@ -257,7 +263,7 @@ export function buildContractRows(data, reportDate, cfg) {
       year: c.year || yearFrom(c.signDate), issues,
       nextAction: c.nextAction || contractNextAction(c, progress, due, pay),
       updatedAt: c.updatedAt, changedAfterReport: isAfter(c.updatedAt, reportDate), stale: isStale(c.updatedAt, reportDate, cfg),
-      active: ["not_started", "in_progress", "paused"].includes(c.execStatus),
+      active: ["not_started", "in_progress", "paused"].includes(c.execStatus) && c.liquidationStatus !== "done",
       saving: savingOf(c), dateIssues: dateIssues(c),
     };
   });
@@ -343,7 +349,7 @@ export function buildAlerts(pkgRows, hdRows, reportDate, cfg) {
     else if (p.code === "review") action.push({ ...common, kind: "review", task: "Rà soát văn bản gia hạn xung đột", due: null, days: null });
     else if (["done", "done_late", "done_nodate"].includes(p.code) && liqTracked(c) && c.liquidationStatus !== "done") action.push({ ...common, kind: "await_liq", task: "Nghiệm thu, thanh lý", due: null, days: null });
     if (p.code === "no_due") data.push({ ...common, kind: "no_due", task: "Chưa có hạn hoàn thành" });
-    if (p.code === "done_nodate") data.push({ ...common, kind: "missing_done_date", task: "Đã hoàn thành nhưng thiếu ngày hoàn thành thực tế" });
+    if (p.code === "done_nodate" && !p.liquidated) data.push({ ...common, kind: "missing_done_date", task: "Đã hoàn thành nhưng thiếu ngày hoàn thành thực tế" });
     if (liqTracked(c) && c.liquidationStatus === "done" && (!c.liquidationDate || !c.liquidationDoc)) data.push({ ...common, kind: "liq_missing", task: "Đã thanh lý nhưng thiếu ngày/hồ sơ thanh lý" });
     if (r.dateIssues?.length) data.push({ ...common, kind: "date_check", task: `Ngày cần kiểm tra: ${r.dateIssues.join("; ")}` });
     if (!r.staffId) data.push({ ...common, kind: "no_owner", task: "Chưa có cán bộ phụ trách" });

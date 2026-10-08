@@ -232,3 +232,19 @@ test("Nhiều gói: KPI bấm lọc khớp danh sách; thiếu người phụ tr
   assert.equal(data.filter((x) => x.kind === "no_owner").length, 6);
   assert.equal(daysText(-3), "Chậm 3 ngày");
 });
+
+test("HĐ đã thanh lý = đã hoàn thành: không quá hạn, không còn đang thực hiện; ngày sai định dạng bị cảnh báo", async () => {
+  const { contractProgress, dateIssues } = await import("../src/lib/rules.js");
+  const c = { id: "x", execStatus: "in_progress", liquidationStatus: "done", originalDue: "2025-03-11", signDate: "2024-09-12" };
+  const p = contractProgress(c, [], "2026-10-08");
+  assert.equal(p.code, "done_nodate"); assert.equal(p.liquidated, true);
+  const d = { ...emptyData(), contracts: [c] };
+  const rows = buildContractRows(d, "2026-10-08", cfg);
+  assert.equal(rows[0].active, false);
+  const al = buildAlerts([], rows, "2026-10-08", cfg);
+  assert.equal(al.action.filter((a) => a.kind === "overdue").length, 0);
+  assert.equal(al.data.filter((a) => a.kind === "missing_done_date").length, 0);
+  assert.match(dateIssues({ signDate: "2026-01-02", liquidationDate: "22026-06-30" }).join(), /sai định dạng/);
+  // có ngày hoàn thành thực tế: vẫn đánh giá đúng / chậm theo ngày hoàn thành
+  assert.equal(contractProgress({ ...c, actualCompletionDate: "2025-03-20" }, [], "2026-10-08").code, "done_late");
+});

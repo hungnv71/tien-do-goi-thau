@@ -116,7 +116,7 @@ export async function exportWorkbook({ data, pkgRows = [], hdRows = [], alerts, 
       { h: "Hạn ban đầu", w: 12, v: (r) => fmtDate(r.due.originalDue) }, { h: "Hạn hiện hành", w: 12, v: (r) => fmtDate(r.due.currentDue) },
       { h: "Gia hạn (lần)", w: 9, num: true, v: (r) => r.due.extCount }, { h: "Tiền tệ", w: 7, v: (r) => r.value.currency },
       { h: "Giá trị ký ban đầu", w: 18, money: true, v: (r) => r.value.original }, { h: "Giá trị hiện hành", w: 18, money: true, v: (r) => r.value.current },
-      { h: "Tiến độ", w: 20, alert: true, v: (r) => HD_PROGRESS[r.progress.code].label + (r.progress.lateDays ? ` (${r.progress.lateDays} ngày)` : "") },
+      { h: "Tiến độ", w: 20, alert: true, v: (r) => (r.progress.liquidated ? "Đã thanh lý" : HD_PROGRESS[r.progress.code].label) + (r.progress.lateDays ? ` (${r.progress.lateDays} ngày)` : "") },
       { h: "Chậm so hạn gốc (ngày)", w: 11, num: true, v: (r) => r.progress.lateVsOriginal || "" },
       { h: "Thực hiện", w: 15, v: (r) => EXEC_STATUS[r.rec.execStatus] }, { h: "Nghiệm thu", w: 15, v: (r) => ACC_STATUS[r.rec.acceptanceStatus] },
       { h: "Thanh lý", w: 13, v: (r) => LIQ_STATUS[r.rec.liquidationStatus] }, { h: "Theo dõi thanh toán", w: 18, v: (r) => PAY_OWNER[r.pay.owner] || "Chưa xác định" },
@@ -357,10 +357,10 @@ export async function exportTasksWorkbook({ data, rows, reportDate, cfg, filters
 }
 
 // ============================================================ XUẤT EXCEL HỢP ĐỒNG THEO MẪU "Báo cáo các HĐ" (TỔNG HỢP + DS GÓI THẦU)
-const HD_RED = "FFE06666", HD_PINK = "FFFDF0F0", HD_HEAD2 = "FFEFB4B4";
-export const hdStatusText = (c) => ({ cancelled: "Đã hủy", terminated: "Chấm dứt", paused: "Tạm dừng", not_started: "Đang thực hiện", in_progress: "Đang thực hiện" }[c.execStatus]
+const HD_RED = "FF5B9BD5", HD_PINK = "FFF2F7FC", HD_HEAD2 = "FFDDEBF7";   // tông xanh nhạt (theo yêu cầu)
+export const hdStatusText = (c) => (c.liquidationStatus === "done" && !["cancelled", "terminated"].includes(c.execStatus) ? "Đã thanh lý" : null) || ({ cancelled: "Đã hủy", terminated: "Chấm dứt", paused: "Tạm dừng", not_started: "Đang thực hiện", in_progress: "Đang thực hiện" }[c.execStatus]
   || (c.liquidationStatus === "done" ? "Đã thanh lý" : "Đã kết thúc"));
-const xlDate = (iso) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
+const xlDate = (iso) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T00:00:00Z`) : iso || null);
 
 export async function exportContractsTracking({ data, hdRows, reportDate, cfg, filters, me, kpiKey }) {
   const ExcelJS = await loadExcelJS();
@@ -378,7 +378,7 @@ export async function exportContractsTracking({ data, hdRows, reportDate, cfg, f
   // HĐ khung / chưa có GT ký (= 0): không cộng GT KH thầu để tiết kiệm không bị thổi phồng (ghi ở Ghi chú)
   const I = (r) => (vnd(r) && r.rec.plannedValue != null && J(r) > 0 ? Number(r.rec.plannedValue) : null);
   const ctr = (r) => r.contractorName || "";
-  const thin2 = { style: "thin", color: { argb: "FFE3C2C2" } };
+  const thin2 = { style: "thin", color: { argb: "FFBDD7EE" } };
   const bd = { top: thin2, left: thin2, bottom: thin2, right: thin2 };
   const NUM = "#,##0;(#,##0);-", TY = "#,##0.00;(#,##0.00);-";
 
@@ -396,7 +396,7 @@ export async function exportContractsTracking({ data, hdRows, reportDate, cfg, f
   ds.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } };
   ds.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
   ds.getCell("A2").value = `${cfg.orgName} |  Kỳ báo cáo: ${ky}  |  Đơn vị giá trị: VNĐ  |  Bộ lọc: ${ft}`;
-  ds.getCell("A2").font = { italic: true, size: 10, color: { argb: "FF8C3B3B" } };
+  ds.getCell("A2").font = { italic: true, size: 10, color: { argb: "FF1F4E79" } };
   ds.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_PINK } };
   ds.getRow(1).height = 32; ds.getRow(3).height = 6; ds.getRow(4).height = 34;
   COLS.forEach(([h], i) => {
@@ -417,7 +417,7 @@ export async function exportContractsTracking({ data, hdRows, reportDate, cfg, f
   sub.eachCell({ includeEmpty: true }, (c, n) => {
     if (n > 19) return;
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: n === 1 ? HD_RED : HD_PINK } };
-    c.font = { bold: true, size: 10.5, color: { argb: n === 1 ? "FFFFFFFF" : "FFB85450" } }; c.border = bd;
+    c.font = { bold: true, size: 10.5, color: { argb: n === 1 ? "FFFFFFFF" : "FF2F5597" } }; c.border = bd;
   });
   ds.getCell("B5").numFmt = '#,##0" gói"'; ds.getCell("C5").numFmt = '#,##0" HĐ"'; ds.getCell("L5").numFmt = "0.00%"; ds.getCell("M5").numFmt = '#,##0" NT"';
   ["I5", "J5", "K5"].forEach((k) => { ds.getCell(k).numFmt = NUM; });
@@ -452,7 +452,7 @@ export async function exportContractsTracking({ data, hdRows, reportDate, cfg, f
   th.getCell("B1").alignment = { vertical: "middle", horizontal: "center" };
   th.getRow(1).height = 34;
   th.getCell("B2").value = `${cfg.orgName}   |   Kỳ báo cáo: ${ky}   |   Đơn vị giá trị: tỷ đồng   |   Số liệu liên kết động từ sheet 'DS GÓI THẦU'   |   Bộ lọc: ${ft}`;
-  th.getCell("B2").font = { size: 10, color: { argb: "FF8C3B3B" } };
+  th.getCell("B2").font = { size: 10, color: { argb: "FF1F4E79" } };
   th.getCell("B2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_PINK } };
   const ty9 = (v) => Math.round((v / 1e9) * 100) / 100;
   const cards = [["B", "C", "TỔNG GÓI THẦU", uniq(rows.map((r) => r.code)), NUM, "gói (không trùng số hiệu)"], ["D", "E", "TỔNG HỢP ĐỒNG", rows.length, NUM, "hợp đồng"],
@@ -465,7 +465,7 @@ export async function exportContractsTracking({ data, hdRows, reportDate, cfg, f
     th.getCell(`${a}4`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: HD_RED } };
     th.getCell(`${a}4`).alignment = { horizontal: "center" };
     th.getCell(`${a}5`).value = v; th.getCell(`${a}5`).numFmt = fmt;
-    th.getCell(`${a}5`).font = { bold: true, size: 22, color: { argb: "FFB85450" } };
+    th.getCell(`${a}5`).font = { bold: true, size: 22, color: { argb: "FF2F5597" } };
     th.getCell(`${a}5`).alignment = { horizontal: "center", vertical: "middle" };
     th.getCell(`${a}7`).value = unit; th.getCell(`${a}7`).font = { size: 8.5, color: { argb: "FF777777" } };
     th.getCell(`${a}7`).alignment = { horizontal: "center" };

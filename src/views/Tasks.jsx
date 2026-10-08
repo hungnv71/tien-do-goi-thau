@@ -201,7 +201,7 @@ function WeeklyUpdate() {
   const submit = async () => {
     setBusy(true);
     const ops = dirty.flatMap((r) => updateOps(r.rec, f(r), me.id, week));
-    const wr = { staffId: who, week, submittedAt: new Date().toISOString(), taskCount: dirty.length };
+    const wr = { staffId: who, week, submittedAt: new Date().toISOString(), taskCount: (rep?.taskCount || 0) + dirty.length, submitCount: (rep?.submitCount || (rep ? 1 : 0)) + 1 };
     ops.push(rep ? { table: "weekly_reports", op: "update", id: rep.id, data: wr } : { table: "weekly_reports", op: "insert", id: `${who}|${week}`, data: wr });
     const ok = await write(ops, null);
     setBusy(false);
@@ -213,12 +213,12 @@ function WeeklyUpdate() {
         <div className="between">
           <div>
             <h2 style={{ margin: 0, fontSize: 17 }}>Báo cáo tiến độ {weekLabel(week)}</h2>
-            <div className="small mut">Chỉ sửa dòng có thay đổi rồi bấm <b>Gửi báo cáo tuần</b>. Hạn đã khóa — cần đổi hạn thì mở nhiệm vụ → Đề nghị gia hạn. Gói thầu tự cập nhật từ phân hệ LCNT, không cần báo cáo lại.</div>
+            <div className="small mut">Chỉ sửa dòng có thay đổi rồi bấm <b>CẬP NHẬT</b>. Hạn đã khóa — cần đổi hạn thì mở nhiệm vụ → Đề nghị gia hạn. Gói thầu tự cập nhật từ phân hệ LCNT, không cần báo cáo lại.</div>
           </div>
           <div className="row">
             {can.manage && <label className="row small">Báo cáo của <Sel style={{ width: 210 }} value={who} onChange={(e) => { setWho(e.target.value); setForms({}); }}>{staffOpts.map((s) => <option key={s.id} value={s.id}>{staffLabel(s)}</option>)}</Sel></label>}
             {rep ? <Badge tone="green">Đã gửi {new Date(rep.submittedAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "short", timeStyle: "short" })}</Badge> : <Badge tone="amber">Chưa gửi tuần này</Badge>}
-            {!ro && <Btn icon={Send} disabled={busy} onClick={submit}>{busy ? "Đang gửi…" : dirty.length ? `Gửi báo cáo tuần (${dirty.length} việc cập nhật)` : rep ? "Gửi lại: không thay đổi" : "Gửi báo cáo: không có thay đổi"}</Btn>}
+            {!ro && <Btn icon={Send} disabled={busy} onClick={submit}>{busy ? "Đang gửi…" : <>CẬP NHẬT <span style={{ fontWeight: 400 }}>({[dirty.length ? `${dirty.length} việc thay đổi` : "không có thay đổi", rep ? `đã gửi ${rep.submitCount || 1} lần` : "chưa gửi tuần này"].join(" · ")})</span></>}</Btn>}
           </div>
         </div>
       </div>

@@ -14,7 +14,7 @@ import { DataLists } from "./Tenders.jsx";
 
 const SEV = { overdue: 0, review: 1, due_today: 1, due_soon: 2, no_due: 3, on_track: 5, done_nodate: 6, done_late: 6, done: 7, terminated: 8, cancelled: 9 };
 export const progressBadge = (p) => {
-  const s = HD_PROGRESS[p.code];
+  const s = p.liquidated ? { label: "Đã thanh lý", tone: "blue" } : HD_PROGRESS[p.code];
   const extra = p.code === "overdue" || p.code === "done_late" ? ` ${p.lateDays} ngày` : p.code === "due_soon" ? ` · còn ${p.daysLeft} ngày` : "";
   return <Badge tone={s.tone}>{s.label}{extra}{p.paused ? " · tạm dừng" : ""}</Badge>;
 };
@@ -33,7 +33,7 @@ export default function Contracts() {
   const vnd = rows.filter((r) => r.value.currency === "VND" && r.value.current !== null);
   return (
     <>
-      <Banner icon="02-contract" title="Hợp đồng đã ký" sub={<>{rows.length} hợp đồng · giá trị hiện hành {ty(vnd.reduce((a, r) => a + r.value.current, 0))} VNĐ{rows.length !== vnd.length ? ` (+${rows.length - vnd.length} HĐ ngoại tệ/thiếu giá trị, không cộng)` : ""} · Ngày dữ liệu {fmtDate(reportDate)}</>}>
+      <Banner icon="02-contract" title="Hợp đồng đã ký" sub={<>{rows.length} hợp đồng · giá trị hợp đồng {ty(vnd.reduce((a, r) => a + r.value.current, 0))} VNĐ{rows.length !== vnd.length ? ` (+${rows.length - vnd.length} HĐ ngoại tệ/thiếu giá trị, không cộng)` : ""} · Ngày dữ liệu {fmtDate(reportDate)}</>}>
         <Btn kind="ghost" icon={Download} onClick={() => exportContractsTracking({ data, hdRows: rows, reportDate, cfg, filters, me, kpiKey: kpi })} title="Theo mẫu file Báo cáo các HĐ (TỔNG HỢP + DS GÓI THẦU)">Xuất Excel (mẫu HĐ theo dõi)</Btn>
         {can.write && <Btn kind="ghost" icon={Upload} onClick={() => setImporting(true)}>Nhập Excel</Btn>}
         {can.write && <Btn icon={Plus} onClick={() => setAdding(true)}>Thêm HĐ</Btn>}
@@ -54,7 +54,7 @@ export default function Contracts() {
 
 const HCOLS = [
   { key: "code", label: "Mã gói", fixed: true }, { key: "no", label: "Số HĐ & tên", fixed: true }, { key: "ctr", label: "Nhà thầu" }, { key: "staff", label: "Cán bộ" },
-  { key: "sign", label: "Ngày ký" }, { key: "due", label: "Hạn hiện hành" }, { key: "ext", label: "Gia hạn lần" }, { key: "planned", label: "GT kế hoạch thầu" }, { key: "value", label: "Giá trị hiện hành" }, { key: "saving", label: "Tiết kiệm" },
+  { key: "sign", label: "Ngày ký" }, { key: "due", label: "Hạn hiện hành" }, { key: "ext", label: "Gia hạn lần" }, { key: "planned", label: "GT kế hoạch thầu" }, { key: "value", label: "Giá trị hợp đồng" }, { key: "saving", label: "Tiết kiệm" },
   { key: "prog", label: "Tiến độ" }, { key: "next", label: "Việc tiếp theo" }, { key: "orig", label: "Hạn ban đầu" }, { key: "lateo", label: "Chậm so hạn gốc" },
   { key: "exec", label: "Thực hiện" }, { key: "acc", label: "Nghiệm thu" }, { key: "pay", label: "Thanh toán" }, { key: "liq", label: "Thanh lý" },
   { key: "method", label: "Hình thức LCNT" }, { key: "cat", label: "Loại gói" }, { key: "year", label: "Năm" }, { key: "guar", label: "Bảo lãnh / bảo hành" }, { key: "upd", label: "Cập nhật cuối" },
@@ -71,7 +71,7 @@ function ContractTable({ rows, onOpen }) {
     sign: { label: "Ngày ký", render: (r) => <span className="num nowrap">{fmtD(r.rec.signDate)}</span> },
     due: { label: "Hạn hiện hành", render: (r) => <span className={`num nowrap ${r.progress.code === "overdue" ? "tone-red b" : ""}`}>{r.due.conflict ? "Cần rà soát" : fmtD(r.due.currentDue)}</span> },
     ext: { label: "Gia hạn lần", render: (r) => <span className="num">{r.due.extCount || "—"}{r.due.proposed.length ? <div><Tag>{r.due.proposed.length} chờ duyệt</Tag></div> : null}</span> },
-    value: { label: "Giá trị hiện hành", right: true, render: (r) => <span className="num nowrap" title={`${money(r.value.current, r.value.currency)}${r.value.delta ? ` (gốc ${money(r.value.original, r.value.currency)})` : ""}`}>{r.value.currency === "VND" ? ty(r.value.current) : money(r.value.current, r.value.currency)}{r.value.delta ? <div className="small mut">có điều chỉnh</div> : null}</span> },
+    value: { label: "Giá trị hợp đồng", right: true, render: (r) => <span className="num nowrap" title={`${money(r.value.current, r.value.currency)}${r.value.delta ? ` (gốc ${money(r.value.original, r.value.currency)})` : ""}`}>{r.value.currency === "VND" ? ty(r.value.current) : money(r.value.current, r.value.currency)}{r.value.delta ? <div className="small mut">có điều chỉnh</div> : null}</span> },
     planned: { label: "GT kế hoạch thầu", right: true, render: (r) => <span className="num nowrap" title={money(r.rec.plannedValue, r.value.currency)}>{r.rec.plannedValue == null ? "—" : r.value.currency === "VND" ? ty(r.rec.plannedValue) : money(r.rec.plannedValue, r.value.currency)}</span> },
     saving: { label: "Tiết kiệm", right: true, render: (r) => r.saving.saving == null ? <span className="mut">—</span> : <span className={`num nowrap ${r.saving.saving < 0 ? "tone-red" : ""}`} title={money(r.saving.saving, r.value.currency)}>{r.value.currency === "VND" ? ty(r.saving.saving) : money(r.saving.saving, r.value.currency)}<div className="small mut">{r.saving.pct}%</div></span> },
     prog: { label: "Tiến độ", render: (r) => <>{progressBadge(r.progress)}{r.dateIssues.length ? <div><Badge tone="amber" title={r.dateIssues.join("; ")}>Ngày cần kiểm tra</Badge></div> : null}</> },
@@ -105,6 +105,12 @@ export function ContractDetail({ id, onClose }) {
   const childIds = ["contract_extensions", "contract_amendments", "contract_milestones", "contract_acceptances", "contract_payments"].flatMap((t) => data[t].filter((x) => x.contractId === c.id).map((x) => x.id));
   const del = async () => { const reason = await askReason("Xóa hợp đồng khỏi hệ thống? (khuyến nghị chuyển trạng thái Hủy thay vì xóa)"); if (reason && (await write([{ table: "contracts", op: "delete", id: c.id, reason }], "Đã xóa hợp đồng"))) onClose(); };
   const pkg = c.packageId ? data.packages.find((p) => p.id === c.packageId) : null;
+  const closeHd = async () => {
+    if (!window.confirm(`Đánh dấu HĐ ${c.contractNo} ĐÃ THANH LÝ (đóng hợp đồng)?`)) return;
+    const d = { liquidationStatus: "done" };
+    if (!["completed", "cancelled", "terminated"].includes(c.execStatus)) d.execStatus = "completed";
+    write([{ table: "contracts", op: "update", id: c.id, data: d, reason: "Đã thanh lý — đóng hợp đồng" }], "Đã đóng hợp đồng (đã thanh lý)");
+  };
   return (
     <Modal size="wide" title={<><span className="code" style={{ fontSize: 15 }}>{c.contractNo}</span></>} sub={<span className="row" style={{ gap: 8 }}>{progressBadge(r.progress)}<span className="wrap2" style={{ maxWidth: 700 }}>{r.name}</span></span>} onClose={onClose}>
       <div className="row" style={{ marginBottom: 10 }}>
@@ -113,6 +119,7 @@ export function ContractDetail({ id, onClose }) {
         <Badge tone={r.pay.tracked ? (r.pay.over100 ? "red" : "gray") : "gray"}>{r.pay.tracked ? (!r.pay.hasData ? "Thanh toán: chưa có giao dịch" : `Thanh toán: ${r.pay.rate === null ? "chưa đủ dữ liệu" : r.pay.rate.toFixed(1) + "%"}`) : PAY_OWNER[r.pay.owner] || "Thanh toán: chưa xác định bộ phận"}</Badge>
         <Badge tone={c.liquidationStatus === "done" ? "blue" : "gray"}>{LIQ_STATUS[c.liquidationStatus]}</Badge>
         <span style={{ flex: 1 }} />
+        {editable && c.liquidationStatus !== "done" && <Btn sm icon={Check} onClick={closeHd} title="Đánh dấu đã thanh lý — coi như đã hoàn thành">Đã thanh lý (đóng HĐ)</Btn>}
         {editable && <Btn kind="ghost" sm icon={Pencil} onClick={() => setEdit(true)}>Sửa thông tin</Btn>}
         {can.manage && <Btn kind="danger" sm icon={Trash2} onClick={del}>Xóa</Btn>}
       </div>
@@ -395,6 +402,11 @@ export function ContractForm({ init = {}, onClose }) {
   const dis = !isNew && !can.edit(init.staffId);
   return (
     <Modal size="wide" title={isNew ? "Thêm hợp đồng" : `Sửa hợp đồng ${init.contractNo}`} onClose={onClose} footer={<><Btn kind="ghost" onClick={onClose}>Hủy</Btn><Btn onClick={save} disabled={dis}>Lưu</Btn></>}>
+      {!isNew && <div className={`close-box ${f.liquidationStatus === "done" ? "on" : ""}`}>
+        <label className="row b" style={{ fontSize: 16 }}><input type="checkbox" checked={f.liquidationStatus === "done"} onChange={(e) => setF({ ...f, liquidationStatus: e.target.checked ? "done" : init.liquidationStatus === "done" ? "none" : init.liquidationStatus || "none", execStatus: e.target.checked && !["cancelled", "terminated"].includes(f.execStatus) ? "completed" : init.execStatus })} /> ĐÃ THANH LÝ — ĐÓNG HỢP ĐỒNG</label>
+        <label className="row small">Ngày thanh lý <Inp type="date" style={{ width: 160 }} value={f.liquidationDate || ""} onChange={set("liquidationDate")} /></label>
+        <span className="small mut">Đóng HĐ = coi như đã hoàn thành, không còn cảnh báo quá hạn. Ngày / hồ sơ thanh lý không bắt buộc.</span>
+      </div>}
       <div className="form-grid">
         <Field label="Số hợp đồng *"><Inp value={f.contractNo || ""} onChange={set("contractNo")} /></Field>
         <Field label="Nội dung / tên HĐ" span={2}><Inp value={f.name || ""} onChange={set("name")} /></Field>
@@ -424,7 +436,7 @@ export function ContractForm({ init = {}, onClose }) {
         <Field label="Trạng thái thực hiện"><Sel value={f.execStatus} onChange={set("execStatus")}>{Object.entries(EXEC_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
         <Field label="Nghiệm thu"><Sel value={f.acceptanceStatus} onChange={set("acceptanceStatus")}>{Object.entries(ACC_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
         <Field label="Ngày nghiệm thu"><Inp type="date" value={f.acceptanceDate || ""} onChange={set("acceptanceDate")} /></Field>
-        <Field label="Thanh lý" hint="Không bắt buộc. Chọn “Phòng khác thực hiện” nếu thanh quyết toán thuộc phòng khác — hệ thống không nhắc thanh lý"><Sel value={f.liquidationStatus} onChange={set("liquidationStatus")}>{Object.entries(LIQ_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
+        <Field label="Thanh lý" hint="Không bắt buộc. Chọn “Phòng khác thực hiện” nếu thanh quyết toán thuộc phòng khác — hệ thống không nhắc thanh lý"><Sel value={f.liquidationStatus} onChange={(e) => setF({ ...f, liquidationStatus: e.target.value, execStatus: e.target.value === "done" && !["cancelled", "terminated"].includes(f.execStatus) ? "completed" : f.execStatus })}>{Object.entries(LIQ_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>
         <Field label="Ngày thanh lý"><Inp type="date" value={f.liquidationDate || ""} onChange={set("liquidationDate")} /></Field>
         <Field label="Hồ sơ thanh lý"><Inp value={f.liquidationDoc || ""} onChange={set("liquidationDoc")} /></Field>
         <Field label="Theo dõi thanh toán"><Sel value={f.paymentOwner || ""} onChange={set("paymentOwner")}><option value="">Chưa xác định</option>{Object.entries(PAY_OWNER).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Sel></Field>

@@ -88,7 +88,7 @@ export function ActionTable({ items, onOpen, showModule }) {
         <tbody>
           {items.map((a, i) => (
             <tr key={a.recordId + a.kind + i} className={a.kind === "overdue" ? "hl" : ""}>
-              <td style={{ minWidth: 200, maxWidth: 320 }}><div className="code b">{a.code}</div><div className="small mut wrap2">{a.title}</div></td>
+              <td style={{ minWidth: 200, maxWidth: 320 }}><div className="wrap2" style={{ fontWeight: 600, color: "var(--text)" }} title={a.title}>{a.title}</div><div className="code small mut">{a.code}</div></td>
               {showModule && <td className="small">{MODULE_LABEL[a.module] || a.module}</td>}
               <td style={{ maxWidth: 240 }}>{a.task}{a.paused && <div><Badge tone="gray">Đang tạm dừng</Badge></div>}</td>
               <td className="nowrap">{a.staffName}</td>
